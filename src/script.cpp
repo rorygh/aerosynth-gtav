@@ -18,6 +18,7 @@
 #include "screencapturer.h"
 #include "camera.h"
 #include "fileexporter.h"
+#include "depthcapturer.h"
 #include "scripthookv_sdk/inc/natives.h"
 #include <windows.h>
 #include <cstdio>
@@ -27,7 +28,8 @@
 // Global objects
 ScreenCapturer g_screen_capturer;
 ScriptedCamera g_camera;
-FileExporter g_file_exporter;
+FileExporter   g_file_exporter;
+DepthCapturer  g_depth_capturer;
 
 // State variables
 bool g_capture_enabled = false;
@@ -115,6 +117,22 @@ void RandomizeDronePosition()
 	g_camera.SetRotation(cam_rot);
 }
 
+// _ADD_TEXT_COMPONENT_STRING truncates at 99 chars per call even with CELL_EMAIL_BCON.
+// Feed the text in 99-character chunks to avoid silent truncation.
+static void AddLongText(const char* text)
+{
+	const int LIMIT = 99;
+	char chunk[100];
+	int len = (int)strlen(text);
+	for (int i = 0; i < len; i += LIMIT) {
+		int n = len - i;
+		if (n > LIMIT) n = LIMIT;
+		memcpy(chunk, text + i, n);
+		chunk[n] = '\0';
+		UI::_ADD_TEXT_COMPONENT_STRING(chunk);
+	}
+}
+
 void DrawDebugText()
 {
 	UI::SET_TEXT_FONT(0);
@@ -129,44 +147,57 @@ void DrawDebugText()
 		"F7 - Toggle Continuous (%s)\n"
 		"F8 - Random Drone Position\n"
 		"F9 - Toggle Camera Mode\n"
-		"Session: %s",
+		"Session: %s\n"
+		"Depth: hook=%s omRT=%d match=%d clrDSV=%d fmt=%u %dx%d map=%s%s",
 		g_camera.IsRendering() ? "AERIAL" : "NORMAL",
 		g_continuous_capture ? "ON" : "OFF",
-		g_session_directory.empty() ? "Not Started" : "Active");
+		g_session_directory.empty() ? "Not Started" : "Active",
+		DepthCapturer::s_hooked        ? "Y" : "N",
+		DepthCapturer::s_omSetRTCount,
+		DepthCapturer::s_matchCount,
+		DepthCapturer::s_dsvCallCount,
+		DepthCapturer::s_lastFormat,
+		DepthCapturer::s_lastW,
+		DepthCapturer::s_lastH,
+		DepthCapturer::s_lastMapOk     ? "ok" : "fail",
+		DepthCapturer::s_timedOut      ? " TIMEOUT" : "");
 
-	UI::_ADD_TEXT_COMPONENT_STRING(status_text);
+	AddLongText(status_text);
 	UI::_DRAW_TEXT(0.05f, 0.05f);
 }
 
 void CaptureFrame(int frame_number)
 {
-	// Capture screen to temporary BMP
-	char temp_image_path[256];
-	sprintf_s(temp_image_path, sizeof(temp_image_path),
+	CameraIntrinsics intrinsics = g_camera.GetIntrinsics();
+
+	char rgb_path[256];
+	sprintf_s(rgb_path, sizeof(rgb_path),
 		"%s/frame_%06d.bmp", g_session_directory.c_str(), frame_number);
 
-	if (!g_screen_capturer.CaptureScreenToPNG(temp_image_path)) {
+	if (!g_screen_capturer.CaptureScreenToPNG(rgb_path)) {
 		return;
 	}
 
-	// Prepare frame data
+	char depth_path[256];
+	sprintf_s(depth_path, sizeof(depth_path),
+		"%s/frame_%06d_depth.bmp", g_session_directory.c_str(), frame_number);
+	g_depth_capturer.SaveDepth(depth_path, intrinsics.near_clip, intrinsics.far_clip);
+
 	FrameData frame_data;
-	frame_data.frame_number = frame_number;
-	frame_data.timestamp = (long long)time(nullptr) * 1000; // ms
-	frame_data.resolution.width = g_screen_capturer.GetScreenWidth();
+	frame_data.frame_number      = frame_number;
+	frame_data.timestamp         = (long long)time(nullptr) * 1000;
+	frame_data.resolution.width  = g_screen_capturer.GetScreenWidth();
 	frame_data.resolution.height = g_screen_capturer.GetScreenHeight();
+	frame_data.extrinsics        = g_camera.GetExtrinsics();
+	frame_data.intrinsics        = intrinsics;
 
-	// Get camera parameters
-	frame_data.extrinsics = g_camera.GetExtrinsics();
-	frame_data.intrinsics = g_camera.GetIntrinsics();
+	char rgb_filename[64], depth_filename[64];
+	sprintf_s(rgb_filename,   sizeof(rgb_filename),   "frame_%06d.bmp",       frame_number);
+	sprintf_s(depth_filename, sizeof(depth_filename), "frame_%06d_depth.bmp", frame_number);
+	frame_data.rgb_filename   = rgb_filename;
+	frame_data.depth_filename = depth_filename;
 
-	// Set filenames
-	char rgb_filename[64];
-	sprintf_s(rgb_filename, sizeof(rgb_filename), "frame_%06d.bmp", frame_number);
-	frame_data.rgb_filename = rgb_filename;
-
-	// Export frame metadata
-	g_file_exporter.ExportFrame(frame_data, temp_image_path);
+	g_file_exporter.ExportFrame(frame_data, rgb_path);
 }
 
 void ProcessHotkeys()

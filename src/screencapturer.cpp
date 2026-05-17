@@ -1,114 +1,114 @@
 #include "screencapturer.h"
-#include <cstring>
 #include <vector>
 
-// Simple PNG encoding (stb_image_write style approach)
-// This is a minimal PNG writer - production code would use libpng or lodepng
-// For now, we'll write uncompressed BMP and note that Phase 1 should be PNG via external lib
+static const char* GTA_WINDOW_CLASS = "grcWindow";
 
 ScreenCapturer::ScreenCapturer() : screen_width(0), screen_height(0) {
     InitializeScreenDimensions();
 }
 
-ScreenCapturer::~ScreenCapturer() {
-}
+ScreenCapturer::~ScreenCapturer() {}
 
 void ScreenCapturer::InitializeScreenDimensions() {
-    screen_width = GetSystemMetrics(SM_CXSCREEN);
-    screen_height = GetSystemMetrics(SM_CYSCREEN);
+    // Best-effort at startup; the GTA V window may not exist yet.
+    // CaptureScreenToHBITMAP refreshes these from the actual window each call.
+    HWND hwnd = FindWindowA(GTA_WINDOW_CLASS, nullptr);
+    if (hwnd) {
+        RECT r;
+        GetClientRect(hwnd, &r);
+        screen_width  = r.right  - r.left;
+        screen_height = r.bottom - r.top;
+    } else {
+        screen_width  = GetSystemMetrics(SM_CXSCREEN);
+        screen_height = GetSystemMetrics(SM_CYSCREEN);
+    }
 }
 
-int ScreenCapturer::GetScreenWidth() const {
-    return screen_width;
-}
-
-int ScreenCapturer::GetScreenHeight() const {
-    return screen_height;
-}
+int ScreenCapturer::GetScreenWidth()  const { return screen_width; }
+int ScreenCapturer::GetScreenHeight() const { return screen_height; }
 
 HBITMAP ScreenCapturer::CaptureScreenToHBITMAP() {
-    HDC hScreenDC = GetDC(NULL);
-    HDC hMemDC = CreateCompatibleDC(hScreenDC);
-    HBITMAP hBitmap = CreateCompatibleBitmap(hScreenDC, screen_width, screen_height);
-    
-    HBITMAP hOldBitmap = (HBITMAP)SelectObject(hMemDC, hBitmap);
-    
-    BitBlt(hMemDC, 0, 0, screen_width, screen_height, hScreenDC, 0, 0, SRCCOPY);
-    
-    SelectObject(hMemDC, hOldBitmap);
+    HWND hwnd = FindWindowA(GTA_WINDOW_CLASS, nullptr);
+
+    int w, h, srcX = 0, srcY = 0;
+
+    if (hwnd) {
+        // Client area size — excludes window chrome (irrelevant for borderless, but correct regardless)
+        RECT client;
+        GetClientRect(hwnd, &client);
+        w = client.right  - client.left;
+        h = client.bottom - client.top;
+
+        // Map the client origin to screen coordinates so we BitBlt from the right place
+        POINT origin = { 0, 0 };
+        ClientToScreen(hwnd, &origin);
+        srcX = origin.x;
+        srcY = origin.y;
+    } else {
+        w = GetSystemMetrics(SM_CXSCREEN);
+        h = GetSystemMetrics(SM_CYSCREEN);
+    }
+
+    screen_width  = w;
+    screen_height = h;
+
+    HDC     hScreenDC = GetDC(nullptr);
+    HDC     hMemDC    = CreateCompatibleDC(hScreenDC);
+    HBITMAP hBitmap   = CreateCompatibleBitmap(hScreenDC, w, h);
+    HBITMAP hOld      = static_cast<HBITMAP>(SelectObject(hMemDC, hBitmap));
+
+    BitBlt(hMemDC, 0, 0, w, h, hScreenDC, srcX, srcY, SRCCOPY);
+
+    SelectObject(hMemDC, hOld);
     DeleteDC(hMemDC);
-    ReleaseDC(NULL, hScreenDC);
-    
+    ReleaseDC(nullptr, hScreenDC);
+
     return hBitmap;
 }
 
 bool ScreenCapturer::CaptureScreenToPNG(const std::string& output_path) {
     HBITMAP hBitmap = CaptureScreenToHBITMAP();
-    if (!hBitmap) {
-        return false;
-    }
-    
+    if (!hBitmap) return false;
+
     BITMAP bmp;
     GetObject(hBitmap, sizeof(BITMAP), &bmp);
-    
-    // Get device context for screen
-    HDC hScreenDC = GetDC(NULL);
-    HDC hMemDC = CreateCompatibleDC(hScreenDC);
-    SelectObject(hMemDC, hBitmap);
-    
-    // Prepare BMP file header
-    int width = bmp.bmWidth;
-    int height = bmp.bmHeight;
-    int bit_count = bmp.bmBitsPixel;
-    int bytes_per_pixel = bit_count / 8;
-    int row_size = ((width * bit_count + 31) / 32) * 4;
-    
-    // For MVP, write as BMP (simpler than PNG encoding from scratch)
-    // TODO: Add lodepng library to external/ and encode as PNG
-    BITMAPFILEHEADER bmfh;
-    BITMAPINFOHEADER bmih;
-    
-    bmih.biSize = sizeof(BITMAPINFOHEADER);
-    bmih.biWidth = width;
-    bmih.biHeight = height;
-    bmih.biPlanes = 1;
-    bmih.biBitCount = bit_count;
+
+    int w           = bmp.bmWidth;
+    int h           = bmp.bmHeight;
+    int bit_count   = bmp.bmBitsPixel;
+    int row_size    = ((w * bit_count + 31) / 32) * 4;
+
+    BITMAPINFOHEADER bmih = {};
+    bmih.biSize        = sizeof(BITMAPINFOHEADER);
+    bmih.biWidth       = w;
+    bmih.biHeight      = h;
+    bmih.biPlanes      = 1;
+    bmih.biBitCount    = static_cast<WORD>(bit_count);
     bmih.biCompression = BI_RGB;
-    bmih.biSizeImage = 0;
-    bmih.biXPelsPerMeter = 0;
-    bmih.biYPelsPerMeter = 0;
-    bmih.biClrUsed = 0;
-    bmih.biClrImportant = 0;
-    
-    bmfh.bfType = 0x4D42; // "BM"
-    bmfh.bfSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER) + row_size * height;
-    bmfh.bfReserved1 = 0;
-    bmfh.bfReserved2 = 0;
+
+    BITMAPFILEHEADER bmfh = {};
+    bmfh.bfType    = 0x4D42;
     bmfh.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
-    
-    // Read bitmap data
-    std::vector<BYTE> pixel_data(row_size * height);
-    GetDIBits(hMemDC, hBitmap, 0, height, pixel_data.data(), (BITMAPINFO*)&bmih, DIB_RGB_COLORS);
-    
-    // Write to file
-    FILE* file = nullptr;
-    errno_t err = fopen_s(&file, output_path.c_str(), "wb");
-    if (err != 0 || !file) {
-        DeleteDC(hMemDC);
-        ReleaseDC(NULL, hScreenDC);
-        DeleteObject(hBitmap);
-        return false;
-    }
-    
-    fwrite(&bmfh, sizeof(BITMAPFILEHEADER), 1, file);
-    fwrite(&bmih, sizeof(BITMAPINFOHEADER), 1, file);
-    fwrite(pixel_data.data(), 1, pixel_data.size(), file);
-    
-    fclose(file);
-    
+    bmfh.bfSize    = bmfh.bfOffBits + row_size * h;
+
+    HDC hScreenDC = GetDC(nullptr);
+    HDC hMemDC    = CreateCompatibleDC(hScreenDC);
+    SelectObject(hMemDC, hBitmap);
+
+    std::vector<BYTE> pixels(row_size * h);
+    GetDIBits(hMemDC, hBitmap, 0, h, pixels.data(),
+              reinterpret_cast<BITMAPINFO*>(&bmih), DIB_RGB_COLORS);
+
     DeleteDC(hMemDC);
-    ReleaseDC(NULL, hScreenDC);
+    ReleaseDC(nullptr, hScreenDC);
     DeleteObject(hBitmap);
-    
+
+    FILE* f = nullptr;
+    if (fopen_s(&f, output_path.c_str(), "wb") != 0 || !f) return false;
+    fwrite(&bmfh, sizeof(bmfh), 1, f);
+    fwrite(&bmih, sizeof(bmih), 1, f);
+    fwrite(pixels.data(), 1, pixels.size(), f);
+    fclose(f);
+
     return true;
 }

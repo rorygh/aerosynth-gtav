@@ -44,3 +44,10 @@ cmake --install build
 ```
 
 Alternatively, manually copy the `aerosynth_gtav.asi` file to your game directory.
+
+## Miscellaneous
+
+Killing the game (useful when developing remotely over SSH):
+```
+taskkill /IM gta5.exe /F  
+```

@@ -10,6 +10,7 @@ add_library(aerosynth_gtav SHARED
     src/screencapturer.cpp
     src/camera.cpp
     src/fileexporter.cpp
+    src/depthcapturer.cpp
 )
 
 target_include_directories(aerosynth_gtav PRIVATE 
@@ -21,8 +22,10 @@ target_link_directories(aerosynth_gtav PRIVATE
     external/scripthookv_sdk/lib
 )
 
-target_link_libraries(aerosynth_gtav PRIVATE 
+target_link_libraries(aerosynth_gtav PRIVATE
     ScriptHookV
+    d3d11
+    dxgi
 )
 
 set_target_properties(aerosynth_gtav PROPERTIES

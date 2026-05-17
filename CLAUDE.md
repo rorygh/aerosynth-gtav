@@ -69,7 +69,7 @@ Depth is 16-bit BMP, linear: `0 = 0 m`, `65535 = 500 m`.
 
 **Ground height:** Use `GET_GROUND_Z_FOR_3D_COORD` probing from Z=300. Reject results above 250 m — the function can echo the probe altitude when collision hasn't loaded. Check `WATER::GET_WATER_HEIGHT` and use the higher of ground/water.
 
-**Debug text:** Use `UI::_SET_TEXT_ENTRY("CELL_EMAIL_BCON")` for multi-line HUD text. The default `"STRING"` label silently truncates at ~99 characters.
+**Debug text:** Use `UI::_SET_TEXT_ENTRY("CELL_EMAIL_BCON")` for multi-line HUD text. The default `"STRING"` label silently truncates at ~99 characters. `_ADD_TEXT_COMPONENT_STRING` also truncates at 99 characters **per call** even with `CELL_EMAIL_BCON` — split long strings into ≤99-character chunks and call it once per chunk.
 
 **Raycasting:** GTA V's concurrent raycast queue is very small (~10–20 handles). Fire each ray and immediately read its result in the same loop iteration (synchronous). Bulk-firing all rays before collecting results causes all but the first ~20 to return no-hit (all-white depth mask).
 
@@ -84,6 +84,7 @@ Depth is 16-bit BMP, linear: `0 = 0 m`, `65535 = 500 m`.
 
 - **ScriptHookV SDK** — `external/scripthookv_sdk/`
 - **RapidJSON** — header-only JSON, `external/rapidjson/`
+- **DirectX 11** — `d3d11.lib` / `dxgi.lib` (Windows SDK, no external download needed)
 - No external image libraries; BMP is written directly. PNG migration deferred (may add vcpkg/Conan for lodepng later).
 
 ## Implementation Status
@@ -95,10 +96,21 @@ Depth is 16-bit BMP, linear: `0 = 0 m`, `65535 = 500 m`.
 - Hotkey triggers (F6 single, F7 continuous, F8 random drone position)
 - File exporter: BMP + JSON per frame
 
-### Phase 2 — Depth Mask ✅
-- 320×180 synchronous raycasting via `WORLDPROBE::_CAST_RAY_POINT_TO_POINT`
-- 16-bit BMP output, linear 0–500 m encoding
-- Saved alongside RGB on every capture
+### Phase 2 — Depth Mask 🔄
+Game resolution is set to **1280×720**; depth mask matches this resolution.
+
+Approach: read the actual DirectX depth buffer (pixel-accurate, no raycasts).
+
+Pipeline:
+1. `presentCallbackRegister` (DLL attach) → render-thread callback fires each frame
+2. First present: get `ID3D11Device`/`ID3D11DeviceContext` from `IDXGISwapChain`
+3. Patch vtable slot 53 (`ClearDepthStencilView`) with a hook
+4. Hook fires when GTA V clears the main depth buffer (`DXGI_FORMAT_R32G8X24_TYPELESS`, width ≥ 600) — right after the scene is drawn
+5. `CopyResource` to a CPU-readable staging texture; `Map` → extract 32-bit float NDC depths
+6. Script thread requests a capture, yields via `WAIT(0)` until render thread delivers, then linearises + writes 16-bit BMP
+
+Depth linearisation: `z = Q * near / (Q − ndc)` where `Q = far / (far − near)` (standard DX projection).
+Output: 16-bit BMP, linear 0–500 m.
 
 ### Phase 3 — Segmentation Masks
 - Entity detection for natural features (trees, buildings, road, water)
