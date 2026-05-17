@@ -29,6 +29,7 @@ public:
     static int          s_lastH;
     static bool         s_lastMapOk;      // whether the most recent Map() in OnPresent succeeded
     static bool         s_timedOut;       // set when SaveDepth gives up waiting
+    static std::atomic<bool>  s_captureRequested;
 
 private:
     static void OnPresent(void* swapChain);
@@ -41,6 +42,5 @@ private:
     static int                s_capWidth;
     static int                s_capHeight;
     static std::mutex         s_mutex;
-    static std::atomic<bool>  s_captureRequested;
     static std::atomic<bool>  s_depthReady;
 };
