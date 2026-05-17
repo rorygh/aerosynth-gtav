@@ -7,7 +7,7 @@
 #include <cstring>
 #include <fstream>
 
-FileExporter::FileExporter() : frame_count(0) {
+FileExporter::FileExporter() {
 }
 
 FileExporter::~FileExporter() {
@@ -44,8 +44,7 @@ std::string FileExporter::InitializeSession() {
     if (!CreateDirectoryIfNeeded(session_directory)) {
         return "";
     }
-    
-    frame_count = 0;
+
     return session_directory;
 }
 
@@ -119,26 +118,18 @@ bool FileExporter::ExportFrame(const FrameData& frame_data, const std::string& i
     if (session_directory.empty()) {
         return false;
     }
-    
+
     // Verify image file exists
     std::ifstream img_file(image_filepath);
     if (!img_file.good()) {
         return false;
     }
     img_file.close();
-    
-    // Generate metadata JSON filename
-    std::string frame_filename = GetFrameFilename(frame_count);
+
+    // Derive JSON filename from frame_number so it always matches the image filename
+    std::string frame_filename = GetFrameFilename(frame_data.frame_number);
     std::string base_name = frame_filename.substr(0, frame_filename.find_last_of('.'));
-    std::string json_filename = base_name + ".json";
-    
-    std::string full_json_path = session_directory + "/" + json_filename;
-    
-    // Write metadata
-    if (!WriteFrameMetadata(frame_data, full_json_path)) {
-        return false;
-    }
-    
-    frame_count++;
-    return true;
+    std::string full_json_path = session_directory + "/" + base_name + ".json";
+
+    return WriteFrameMetadata(frame_data, full_json_path);
 }

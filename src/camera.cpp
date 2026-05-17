@@ -28,14 +28,16 @@ void ScriptedCamera::CreateCamera(Vector3 position, Vector3 rotation, float fov)
     CAM::SET_CAM_ROT(camera_handle, rotation.x, rotation.y, rotation.z, 2); // 2 = Euler angles
     CAM::SET_CAM_FOV(camera_handle, fov);
     
-    // Activate camera
+    // Activate camera and tell GTA to render from it
     CAM::SET_CAM_ACTIVE(camera_handle, TRUE);
-    
+    CAM::RENDER_SCRIPT_CAMS(TRUE, FALSE, 3000, TRUE, FALSE);
+
     is_active = true;
 }
 
 void ScriptedCamera::DestroyCamera() {
     if (is_active && camera_handle) {
+        CAM::RENDER_SCRIPT_CAMS(FALSE, FALSE, 3000, TRUE, FALSE);
         CAM::SET_CAM_ACTIVE(camera_handle, FALSE);
         CAM::DESTROY_CAM(camera_handle, FALSE);
         is_active = false;
@@ -113,10 +115,6 @@ CameraExtrinsics ScriptedCamera::GetExtrinsics() const {
 }
 
 Vector3 ScriptedCamera::GetRandomWorldPosition() {
-    // Sample valid world positions for aerial view
-    // These are some common rooftop / elevated locations in GTA V
-    // X range: ~-300 to 400, Y range: ~-2000 to 1500, Z range: 50-200
-    
     float x = -300.0f + static_cast<float>(rand()) / (RAND_MAX / 700.0f);
     float y = -2000.0f + static_cast<float>(rand()) / (RAND_MAX / 3500.0f);
     float z = 50.0f + static_cast<float>(rand()) / (RAND_MAX / 150.0f);
@@ -132,10 +130,11 @@ void ScriptedCamera::RandomizeLocation() {
     if (is_active) {
         Vector3 new_pos = GetRandomWorldPosition();
         Vector3 new_rot;
-        new_rot.x = 0.0f;
+        // Pitch: -90 (nadir) to -20 (shallow oblique), random yaw, no roll
+        new_rot.x = -20.0f - static_cast<float>(rand() % 71); // -20 to -90
         new_rot.y = 0.0f;
         new_rot.z = static_cast<float>(rand() % 360);
-        
+
         SetPosition(new_pos);
         SetRotation(new_rot);
     }

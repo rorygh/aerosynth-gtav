@@ -7,9 +7,9 @@
 /*
 	AEROSYNTH Data Capture Script
 	Hotkeys:
-	- 'C' (key 67): Capture single frame
-	- 'V' (key 86): Toggle continuous capture on/off
-	- Arrow keys: Move camera (if in manual mode)
+	- F6 (VK 0x75): Capture single frame
+	- F7 (VK 0x76): Toggle continuous capture on/off
+	- F8 (VK 0x77): Teleport to random drone position
 */
 
 #include "script.h"
@@ -17,8 +17,10 @@
 #include "screencapturer.h"
 #include "camera.h"
 #include "fileexporter.h"
+#include "scripthookv_sdk/inc/natives.h"
 #include <windows.h>
 #include <cstdio>
+#include <cstdlib>
 #include <ctime>
 
 // Global objects
@@ -32,6 +34,33 @@ bool g_continuous_capture = false;
 unsigned int g_last_capture_time = 0;
 unsigned int g_capture_interval_ms = 50; // ~20 fps for continuous capture
 std::string g_session_directory = "";
+int frame_count = 0;
+
+void SetupPlayer()
+{
+	Player player_id = PLAYER::PLAYER_ID();
+	Ped player_ped = PLAYER::PLAYER_PED_ID();
+
+	PLAYER::SET_PLAYER_INVINCIBLE(player_id, TRUE);
+	ENTITY::SET_ENTITY_VISIBLE(player_ped, FALSE, FALSE);
+	PLAYER::SET_EVERYONE_IGNORE_PLAYER(player_id, TRUE);
+	PLAYER::SET_POLICE_IGNORE_PLAYER(player_id, TRUE);
+}
+
+// Teleports the player ped to the camera position so GTA's streaming
+// system loads assets for the area the camera is looking at.
+void TeleportPlayerToCamera()
+{
+	Ped player_ped = PLAYER::PLAYER_PED_ID();
+	Vector3 cam_pos = g_camera.GetPosition();
+	ENTITY::SET_ENTITY_COORDS_NO_OFFSET(player_ped, cam_pos.x, cam_pos.y, cam_pos.z, FALSE, FALSE, FALSE);
+
+	// Kick off streaming for the new area and wait for it to settle
+	STREAMING::REQUEST_COLLISION_AT_COORD(cam_pos.x, cam_pos.y, cam_pos.z);
+	STREAMING::REQUEST_ADDITIONAL_COLLISION_AT_COORD(cam_pos.x, cam_pos.y, cam_pos.z);
+	STREAMING::LOAD_SCENE(cam_pos.x, cam_pos.y, cam_pos.z);
+	WAIT(3000);
+}
 
 void DrawDebugText()
 {
@@ -40,11 +69,12 @@ void DrawDebugText()
 	UI::SET_TEXT_COLOUR(255, 255, 255, 255);
 	UI::_SET_TEXT_ENTRY("STRING");
 
-	char status_text[256];
+	char status_text[512];
 	sprintf_s(status_text, sizeof(status_text),
 		"AEROSYNTH Data Capture\n"
-		"C - Capture Frame\n"
-		"V - Toggle Continuous (%s)\n"
+		"F6 - Capture Frame\n"
+		"F7 - Toggle Continuous (%s)\n"
+		"F8 - Random Drone Position\n"
 		"Session: %s",
 		g_continuous_capture ? "ON" : "OFF",
 		g_session_directory.empty() ? "Not Started" : "Active");
@@ -86,20 +116,20 @@ void CaptureFrame(int frame_number)
 
 void ProcessHotkeys()
 {
-	// 'C' key - Capture single frame
-	if (IsKeyJustUp(0x43)) { // 0x43 = 'C'
+	// F6 - Capture single frame
+	if (IsKeyJustUp(0x75)) { // 0x75 = F6
 		if (!g_capture_enabled) {
 			g_capture_enabled = true;
 			g_session_directory = g_file_exporter.InitializeSession();
 		}
 
 		if (!g_session_directory.empty()) {
-			CaptureFrame(g_file_exporter.GetSessionDirectory().empty() ? 0 : 1);
+			CaptureFrame(frame_count++);
 		}
 	}
 
-	// 'V' key - Toggle continuous capture
-	if (IsKeyJustUp(0x56)) { // 0x56 = 'V'
+	// F7 - Toggle continuous capture
+	if (IsKeyJustUp(0x76)) { // 0x76 = F7
 		if (!g_capture_enabled) {
 			g_capture_enabled = true;
 			g_session_directory = g_file_exporter.InitializeSession();
@@ -107,6 +137,12 @@ void ProcessHotkeys()
 
 		g_continuous_capture = !g_continuous_capture;
 		g_last_capture_time = GetTickCount();
+	}
+
+	// F8 - Teleport camera to a random drone-like position
+	if (IsKeyJustUp(0x77)) { // 0x77 = F8
+		g_camera.RandomizeLocation();
+		TeleportPlayerToCamera();
 	}
 }
 
@@ -123,9 +159,9 @@ void main()
 	start_rot.y = 0.0f;
 	start_rot.z = 0.0f;
 	
+	srand(static_cast<unsigned>(time(nullptr)));
+	SetupPlayer();
 	g_camera.CreateCamera(start_pos, start_rot, 50.0f);
-
-	int frame_count = 0;
 
 	while (true)
 	{

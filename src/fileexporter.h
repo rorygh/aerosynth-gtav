@@ -24,7 +24,6 @@ public:
     
 private:
     std::string session_directory;
-    int frame_count;
     
     // Helper: Create directory if it doesn't exist
     bool CreateDirectoryIfNeeded(const std::string& dir);
