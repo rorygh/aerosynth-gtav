@@ -10,6 +10,7 @@
 	- F6 (VK 0x75): Capture single frame
 	- F7 (VK 0x76): Toggle continuous capture on/off
 	- F8 (VK 0x77): Teleport to random drone position
+	- F9 (VK 0x78): Toggle aerial / normal camera
 */
 
 #include "script.h"
@@ -47,19 +48,61 @@ void SetupPlayer()
 	PLAYER::SET_POLICE_IGNORE_PLAYER(player_id, TRUE);
 }
 
-// Teleports the player ped to the camera position so GTA's streaming
-// system loads assets for the area the camera is looking at.
-void TeleportPlayerToCamera()
+// Invincibility and visibility reset when the player respawns (new ped handle).
+// Re-applying each tick is the standard guard against this.
+void MaintainPlayerState()
 {
+	Player player_id = PLAYER::PLAYER_ID();
 	Ped player_ped = PLAYER::PLAYER_PED_ID();
-	Vector3 cam_pos = g_camera.GetPosition();
-	ENTITY::SET_ENTITY_COORDS_NO_OFFSET(player_ped, cam_pos.x, cam_pos.y, cam_pos.z, FALSE, FALSE, FALSE);
+	PLAYER::SET_PLAYER_INVINCIBLE(player_id, TRUE);
+	ENTITY::SET_ENTITY_VISIBLE(player_ped, FALSE, FALSE);
+}
 
-	// Kick off streaming for the new area and wait for it to settle
-	STREAMING::REQUEST_COLLISION_AT_COORD(cam_pos.x, cam_pos.y, cam_pos.z);
-	STREAMING::REQUEST_ADDITIONAL_COLLISION_AT_COORD(cam_pos.x, cam_pos.y, cam_pos.z);
-	STREAMING::LOAD_SCENE(cam_pos.x, cam_pos.y, cam_pos.z);
-	WAIT(3000);
+// Picks a random map position, teleports the player to the ground there,
+// then positions the camera directly above with a random altitude and angle.
+// Player-first ordering ensures camera is always directly overhead and the
+// player is never placed mid-air (which caused void deaths).
+void RandomizeDronePosition()
+{
+	// Random X/Y within the GTA V map
+	float x = -300.0f + static_cast<float>(rand()) / (RAND_MAX / 700.0f);
+	float y = -2000.0f + static_cast<float>(rand()) / (RAND_MAX / 3500.0f);
+
+	// Prime streaming for this area before querying ground height
+	STREAMING::REQUEST_COLLISION_AT_COORD(x, y, 0.0f);
+	STREAMING::REQUEST_ADDITIONAL_COLLISION_AT_COORD(x, y, 0.0f);
+	STREAMING::LOAD_SCENE(x, y, 0.0f);
+	WAIT(1500);
+
+	// Find the actual ground surface (search downward from high Z)
+	float ground_z = 30.0f; // fallback: above sea level
+	GAMEPLAY::GET_GROUND_Z_FOR_3D_COORD(x, y, 1000.0f, &ground_z, FALSE);
+
+	// If the point is over water, treat the water surface as ground
+	float water_z = 0.0f;
+	if (WATER::GET_WATER_HEIGHT(x, y, ground_z + 1.0f, &water_z)) {
+		if (water_z > ground_z) ground_z = water_z;
+	}
+
+	// Teleport player to just above the ground surface
+	Ped player_ped = PLAYER::PLAYER_PED_ID();
+	ENTITY::SET_ENTITY_COORDS_NO_OFFSET(player_ped, x, y, ground_z + 1.0f, FALSE, FALSE, FALSE);
+	WAIT(1500);
+
+	// Place camera directly above the player at a random altitude and angle
+	float cam_z = ground_z + 50.0f + static_cast<float>(rand()) / (RAND_MAX / 150.0f);
+	Vector3 cam_pos;
+	cam_pos.x = x;
+	cam_pos.y = y;
+	cam_pos.z = cam_z;
+
+	Vector3 cam_rot;
+	cam_rot.x = -20.0f - static_cast<float>(rand() % 71); // -20 to -90 pitch
+	cam_rot.y = 0.0f;
+	cam_rot.z = static_cast<float>(rand() % 360);
+
+	g_camera.SetPosition(cam_pos);
+	g_camera.SetRotation(cam_rot);
 }
 
 void DrawDebugText()
@@ -67,15 +110,17 @@ void DrawDebugText()
 	UI::SET_TEXT_FONT(0);
 	UI::SET_TEXT_SCALE(0.5f, 0.5f);
 	UI::SET_TEXT_COLOUR(255, 255, 255, 255);
-	UI::_SET_TEXT_ENTRY("STRING");
+	UI::_SET_TEXT_ENTRY("CELL_EMAIL_BCON");
 
 	char status_text[512];
 	sprintf_s(status_text, sizeof(status_text),
-		"AEROSYNTH Data Capture\n"
+		"AEROSYNTH Data Capture [%s]\n"
 		"F6 - Capture Frame\n"
 		"F7 - Toggle Continuous (%s)\n"
 		"F8 - Random Drone Position\n"
+		"F9 - Toggle Camera Mode\n"
 		"Session: %s",
+		g_camera.IsRendering() ? "AERIAL" : "NORMAL",
 		g_continuous_capture ? "ON" : "OFF",
 		g_session_directory.empty() ? "Not Started" : "Active");
 
@@ -139,28 +184,37 @@ void ProcessHotkeys()
 		g_last_capture_time = GetTickCount();
 	}
 
-	// F8 - Teleport camera to a random drone-like position
+	// F8 - Teleport to a random drone-like position
 	if (IsKeyJustUp(0x77)) { // 0x77 = F8
-		g_camera.RandomizeLocation();
-		TeleportPlayerToCamera();
+		RandomizeDronePosition();
+	}
+
+	// F9 - Toggle between aerial scripted camera and normal game camera
+	if (IsKeyJustUp(0x78)) { // 0x78 = F9
+		g_camera.SetRendering(!g_camera.IsRendering());
 	}
 }
 
 void main()
 {
-	// Initialize camera at a starting location
-	Vector3 start_pos;
-	start_pos.x = 0.0f;
-	start_pos.y = 0.0f;
-	start_pos.z = 100.0f;
-	
-	Vector3 start_rot;
-	start_rot.x = 0.0f;
-	start_rot.y = 0.0f;
-	start_rot.z = 0.0f;
-	
+	// Wait until the player ped is fully spawned and in control
+	while (!PLAYER::IS_PLAYER_CONTROL_ON(PLAYER::PLAYER_ID())) WAIT(0);
+
 	srand(static_cast<unsigned>(time(nullptr)));
 	SetupPlayer();
+
+	// Place the initial camera directly above the player's actual spawn position
+	Vector3 player_pos = ENTITY::GET_ENTITY_COORDS(PLAYER::PLAYER_PED_ID(), TRUE);
+	Vector3 start_pos;
+	start_pos.x = player_pos.x;
+	start_pos.y = player_pos.y;
+	start_pos.z = player_pos.z + 100.0f;
+
+	Vector3 start_rot;
+	start_rot.x = -45.0f;
+	start_rot.y = 0.0f;
+	start_rot.z = 0.0f;
+
 	g_camera.CreateCamera(start_pos, start_rot, 50.0f);
 
 	while (true)
@@ -176,6 +230,9 @@ void main()
 				g_last_capture_time = current_time;
 			}
 		}
+
+		// Re-apply invincibility and invisibility in case of respawn
+		MaintainPlayerState();
 
 		// Draw debug UI
 		DrawDebugText();

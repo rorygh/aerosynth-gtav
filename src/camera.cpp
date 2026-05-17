@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <ctime>
 
-ScriptedCamera::ScriptedCamera() : camera_handle(0), is_active(false) {
+ScriptedCamera::ScriptedCamera() : camera_handle(0), is_active(false), is_rendering(false) {
 }
 
 ScriptedCamera::~ScriptedCamera() {
@@ -33,6 +33,7 @@ void ScriptedCamera::CreateCamera(Vector3 position, Vector3 rotation, float fov)
     CAM::RENDER_SCRIPT_CAMS(TRUE, FALSE, 3000, TRUE, FALSE);
 
     is_active = true;
+    is_rendering = true;
 }
 
 void ScriptedCamera::DestroyCamera() {
@@ -41,7 +42,19 @@ void ScriptedCamera::DestroyCamera() {
         CAM::SET_CAM_ACTIVE(camera_handle, FALSE);
         CAM::DESTROY_CAM(camera_handle, FALSE);
         is_active = false;
+        is_rendering = false;
     }
+}
+
+void ScriptedCamera::SetRendering(bool enabled) {
+    if (!is_active) return;
+    CAM::SET_CAM_ACTIVE(camera_handle, enabled ? TRUE : FALSE);
+    CAM::RENDER_SCRIPT_CAMS(enabled ? TRUE : FALSE, TRUE, 3000, TRUE, FALSE);
+    is_rendering = enabled;
+}
+
+bool ScriptedCamera::IsRendering() const {
+    return is_rendering;
 }
 
 void ScriptedCamera::SetPosition(Vector3 position) {

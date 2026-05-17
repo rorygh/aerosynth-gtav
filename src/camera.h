@@ -28,12 +28,17 @@ public:
     // Respects bounds to avoid spawning in voids
     void RandomizeLocation();
     
+    // Toggle between scripted camera and default game camera
+    void SetRendering(bool enabled);
+    bool IsRendering() const;
+
     // Check if camera is active
     bool IsActive() const;
     
 private:
     unsigned int camera_handle;
     bool is_active;
+    bool is_rendering;
     
     // Helper: Get valid random world coordinates
     Vector3 GetRandomWorldPosition();
