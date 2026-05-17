@@ -26,8 +26,8 @@ cmake --build build --config Release
 Ninja respects `CMAKE_EXPORT_COMPILE_COMMANDS`, which can be useful for getting `clangd` intellisense to work.
 
 ```powershell
-# Source the toolchain environment variables (adjust for your toolchain)
-cmd /k "C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat"
+# Launch the Visual Studio dev shell (adjust for your toolchain)
+& 'C:\Program Files\Microsoft Visual Studio\18\Community\Common7\Tools\Launch-VsDevShell.ps1' -Arch amd64
 
 cmake -B build -G "Ninja" -DCMAKE_INSTALL_PREFIX="D:\SteamLibrary\steamapps\common\Grand Theft Auto V"
 cmake --build build --config Release
