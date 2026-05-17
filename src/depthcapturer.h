@@ -34,9 +34,9 @@ public:
 private:
     static void OnPresent(void* swapChain);
 
-    bool WriteBMP16(const std::string& path,
-                    const std::vector<float>& linear_depths,
-                    int width, int height);
+    bool WriteBMPGray(const std::string& path,
+                      const std::vector<float>& linear_depths,
+                      int width, int height);
 
     static std::vector<float> s_rawDepths;
     static int                s_capWidth;

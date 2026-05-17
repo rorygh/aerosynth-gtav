@@ -282,14 +282,18 @@ bool DepthCapturer::SaveDepth(const std::string& path, float near_clip, float fa
         linear[i] = Q * near_clip / (Q - ndc);
     }
 
-    return WriteBMP16(path, linear, w, h);
+    return WriteBMPGray(path, linear, w, h);
 }
 
-bool DepthCapturer::WriteBMP16(const std::string& path,
+bool DepthCapturer::WriteBMPGray(const std::string& path,
                                const std::vector<float>& linear_depths,
                                int width, int height)
 {
-    const int stride = width * 2;
+    // 24-bit BGR BMP: R=G=B = depth/MAX_DEPTH*255.
+    // 16-bit BI_RGB is interpreted as RGB565 by viewers (striped colors);
+    // 24-bit grayscale avoids that with no external deps. 8-bit precision (2 m/step at 500 m) is
+    // sufficient for aerial depth.
+    const int stride = ((width * 3 + 3) / 4) * 4;  // DWORD-aligned row
 
     BITMAPFILEHEADER fh = {};
     fh.bfType    = 0x4D42;
@@ -301,7 +305,7 @@ bool DepthCapturer::WriteBMP16(const std::string& path,
     ih.biWidth       = width;
     ih.biHeight      = -height;
     ih.biPlanes      = 1;
-    ih.biBitCount    = 16;
+    ih.biBitCount    = 24;
     ih.biCompression = BI_RGB;
     ih.biSizeImage   = stride * height;
 
@@ -311,15 +315,16 @@ bool DepthCapturer::WriteBMP16(const std::string& path,
     fwrite(&fh, sizeof(fh), 1, f);
     fwrite(&ih, sizeof(ih), 1, f);
 
-    std::vector<uint8_t> row(stride);
+    std::vector<uint8_t> row(stride, 0);
     for (int v = 0; v < height; ++v) {
         for (int u = 0; u < width; ++u) {
             float d = linear_depths[v * width + u];
             if (d < 0.0f)      d = 0.0f;
             if (d > MAX_DEPTH) d = MAX_DEPTH;
-            uint16_t val = static_cast<uint16_t>(d / MAX_DEPTH * 65535.0f);
-            row[u * 2 + 0] = val & 0xFF;
-            row[u * 2 + 1] = (val >> 8) & 0xFF;
+            uint8_t val = static_cast<uint8_t>(d / MAX_DEPTH * 255.0f);
+            row[u * 3 + 0] = val;  // B
+            row[u * 3 + 1] = val;  // G
+            row[u * 3 + 2] = val;  // R
         }
         fwrite(row.data(), 1, stride, f);
     }

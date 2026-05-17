@@ -7,9 +7,9 @@ A ScriptHookV ASI mod for GTA V that captures synthetic aerial data for a drone 
 Capture the following from a scripted aerial camera:
 
 - RGB image/screenshot
+- Camera intrinsics and extrinsics
 - Depth mask
 - Segmentation mask *(Phase 3)*
-- Camera intrinsics and extrinsics
 - Stereo images *(future)*
 
 ## Build
@@ -34,7 +34,7 @@ The Ninja generator enables `compile_commands.json` for clangd IntelliSense.
 | `src/script.cpp` | Main loop, hotkeys, `CaptureFrame`, `RandomizeDronePosition` |
 | `src/camera.h/cpp` | `ScriptedCamera` — wraps CAM natives, exposes intrinsics/extrinsics |
 | `src/screencapturer.h/cpp` | Windows GDI screen capture, saves BMP |
-| `src/depthcapturer.h/cpp` | Per-ray synchronous raycast depth, saves 16-bit BMP |
+| `src/depthcapturer.h/cpp` | DirectX depth buffer readback, saves 24-bit grayscale BMP |
 | `src/fileexporter.h/cpp` | Session directory init, per-frame JSON metadata |
 | `src/framedata.h` | `FrameData`, `CameraIntrinsics`, `CameraExtrinsics` structs |
 
@@ -58,7 +58,8 @@ captures/
     ...
 ```
 
-Depth is 16-bit BMP, linear: `0 = 0 m`, `65535 = 500 m`.
+Depth is a 24-bit grayscale BMP (R=G=B), linear view-space Z: `0 = 0 m`, `255 = 500 m`.
+Decode: `depth_metres = pixel_value / 255.0 * 500.0`. Anything beyond 500 m is clamped to 255.
 
 ## GTA V Technical Notes
 
@@ -96,21 +97,23 @@ Depth is 16-bit BMP, linear: `0 = 0 m`, `65535 = 500 m`.
 - Hotkey triggers (F6 single, F7 continuous, F8 random drone position)
 - File exporter: BMP + JSON per frame
 
-### Phase 2 — Depth Mask 🔄
+### Phase 2 — Depth Mask ✅
 Game resolution is set to **1280×720**; depth mask matches this resolution.
 
 Approach: read the actual DirectX depth buffer (pixel-accurate, no raycasts).
 
 Pipeline:
 1. `presentCallbackRegister` (DLL attach) → render-thread callback fires each frame
-2. First present: get `ID3D11Device`/`ID3D11DeviceContext` from `IDXGISwapChain`
-3. Patch vtable slot 53 (`ClearDepthStencilView`) with a hook
-4. Hook fires when GTA V clears the main depth buffer (`DXGI_FORMAT_R32G8X24_TYPELESS`, width ≥ 600) — right after the scene is drawn
-5. `CopyResource` to a CPU-readable staging texture; `Map` → extract 32-bit float NDC depths
-6. Script thread requests a capture, yields via `WAIT(0)` until render thread delivers, then linearises + writes 16-bit BMP
+2. First present: get `ID3D11Device`/`ID3D11DeviceContext` from `IDXGISwapChain`; patch vtable slots 33 (`OMSetRenderTargets`) and 53 (`ClearDepthStencilView`)
+3. `OMSetRenderTargets` hook tracks the currently-bound DSV; when GTA V **unbinds** the main depth texture (`DXGI_FORMAT_R32G8X24_TYPELESS`, width ≥ 600), the scene pass is complete — `CopyResource` to a staging texture immediately
+4. `OnPresent`: `Map` the staging texture → extract 32-bit float NDC depths → signal script thread
+5. Script thread requests a capture, yields via `WAIT(0)` until render thread delivers, then linearises + writes BMP
 
-Depth linearisation: `z = Q * near / (Q − ndc)` where `Q = far / (far − near)` (standard DX projection).
-Output: 16-bit BMP, linear 0–500 m.
+**GTA V uses reversed-Z** (near = 1.0, far = 0.0). Linearisation flips NDC before applying the standard formula: `ndc_fwd = 1 − ndc_raw`, then `z = Q × near / (Q − ndc_fwd)` where `Q = far / (far − near)`.
+
+**`ClearDepthStencilView` (slot 53) cannot be used for capture timing** — GTA V caches the function pointer directly and bypasses the vtable, so the hook never fires for GTA V's own clears. The slot-33 unbind approach works around this.
+
+Output: 24-bit grayscale BMP (R=G=B), linear view-space Z, 0–500 m.
 
 ### Phase 3 — Segmentation Masks
 - Entity detection for natural features (trees, buildings, road, water)
