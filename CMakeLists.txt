@@ -7,6 +7,9 @@ add_library(aerosynth_gtav SHARED
     src/main.cpp
     src/script.cpp
     src/keyboard.cpp
+    src/screencapturer.cpp
+    src/camera.cpp
+    src/fileexporter.cpp
 )
 
 target_include_directories(aerosynth_gtav PRIVATE 
@@ -26,3 +29,5 @@ set_target_properties(aerosynth_gtav PROPERTIES
     OUTPUT_NAME "aerosynth_gtav"
     SUFFIX ".asi"
 )
+
+install (TARGETS aerosynth_gtav DESTINATION /)
