@@ -48,16 +48,32 @@ void SetupPlayer()
 	ENTITY::SET_ENTITY_VISIBLE(player_ped, FALSE, FALSE);
 	PLAYER::SET_EVERYONE_IGNORE_PLAYER(player_id, TRUE);
 	PLAYER::SET_POLICE_IGNORE_PLAYER(player_id, TRUE);
+
+	// Fix environment for clean data capture
+	TIME::SET_CLOCK_TIME(12, 0, 0);
+	TIME::PAUSE_CLOCK(TRUE);
+	GAMEPLAY::SET_WEATHER_TYPE_NOW_PERSIST(const_cast<char*>("EXTRASUNNY"));
+	VEHICLE::SET_RANDOM_TRAINS(FALSE);
+	VEHICLE::SET_RANDOM_BOATS(FALSE);
 }
 
-// Invincibility and visibility reset when the player respawns (new ped handle).
-// Re-applying each tick is the standard guard against this.
+// Invincibility, visibility, and environment settings that reset each tick or on respawn.
 void MaintainPlayerState()
 {
 	Player player_id = PLAYER::PLAYER_ID();
 	Ped player_ped = PLAYER::PLAYER_PED_ID();
 	PLAYER::SET_PLAYER_INVINCIBLE(player_id, TRUE);
 	ENTITY::SET_ENTITY_VISIBLE(player_ped, FALSE, FALSE);
+
+	// Density multipliers only apply for the current frame — must be called every tick.
+	PED::SET_PED_DENSITY_MULTIPLIER_THIS_FRAME(0.0f);
+	PED::SET_SCENARIO_PED_DENSITY_MULTIPLIER_THIS_FRAME(0.0f, 0.0f);
+	VEHICLE::SET_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME(0.0f);
+	VEHICLE::SET_RANDOM_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME(0.0f);
+	VEHICLE::SET_PARKED_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME(0.0f);
+
+	// Re-apply weather each tick to suppress any engine-driven transitions.
+	GAMEPLAY::SET_WEATHER_TYPE_NOW_PERSIST(const_cast<char*>("EXTRASUNNY"));
 }
 
 // Picks a random map position, teleports the player to the ground there,
