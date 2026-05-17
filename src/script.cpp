@@ -60,37 +60,47 @@ void MaintainPlayerState()
 
 // Picks a random map position, teleports the player to the ground there,
 // then positions the camera directly above with a random altitude and angle.
-// Player-first ordering ensures camera is always directly overhead and the
-// player is never placed mid-air (which caused void deaths).
 void RandomizeDronePosition()
 {
-	// Random X/Y within the GTA V map
 	float x = -300.0f + static_cast<float>(rand()) / (RAND_MAX / 700.0f);
 	float y = -2000.0f + static_cast<float>(rand()) / (RAND_MAX / 3500.0f);
 
-	// Prime streaming for this area before querying ground height
+	// Load collision and scene data for the new area
 	STREAMING::REQUEST_COLLISION_AT_COORD(x, y, 0.0f);
 	STREAMING::REQUEST_ADDITIONAL_COLLISION_AT_COORD(x, y, 0.0f);
 	STREAMING::LOAD_SCENE(x, y, 0.0f);
-	WAIT(1500);
+	WAIT(2500);
 
-	// Find the actual ground surface (search downward from high Z)
-	float ground_z = 30.0f; // fallback: above sea level
-	GAMEPLAY::GET_GROUND_Z_FOR_3D_COORD(x, y, 1000.0f, &ground_z, FALSE);
+	// Query ground height from 300 m — safely above all terrain in the LS area.
+	// Avoid querying from 1000 m: when collision hasn't loaded the function can
+	// misreport the query altitude itself as the ground, giving a bogus ~1000 m result.
+	float ground_z = 0.0f;
+	bool found_ground = false;
+	for (int i = 0; i < 20 && !found_ground; i++) {
+		found_ground = GAMEPLAY::GET_GROUND_Z_FOR_3D_COORD(x, y, 300.0f, &ground_z, FALSE);
+		if (!found_ground) WAIT(100);
+	}
 
-	// If the point is over water, treat the water surface as ground
+	// Sanity-check: terrain in our X/Y range tops out well below 250 m.
+	// A higher value means the query returned the probe altitude, not real terrain.
+	if (ground_z > 250.0f) {
+		found_ground = false;
+		ground_z = 0.0f;
+	}
+
+	// If the point is over water, use the water surface as the floor
 	float water_z = 0.0f;
 	if (WATER::GET_WATER_HEIGHT(x, y, ground_z + 1.0f, &water_z)) {
 		if (water_z > ground_z) ground_z = water_z;
 	}
 
-	// Teleport player to just above the ground surface
+	float safe_z = found_ground ? ground_z + 1.0f : 30.0f;
 	Ped player_ped = PLAYER::PLAYER_PED_ID();
-	ENTITY::SET_ENTITY_COORDS_NO_OFFSET(player_ped, x, y, ground_z + 1.0f, FALSE, FALSE, FALSE);
-	WAIT(1500);
+	ENTITY::SET_ENTITY_COORDS_NO_OFFSET(player_ped, x, y, safe_z, FALSE, FALSE, FALSE);
+	WAIT(500);
 
 	// Place camera directly above the player at a random altitude and angle
-	float cam_z = ground_z + 50.0f + static_cast<float>(rand()) / (RAND_MAX / 150.0f);
+	float cam_z = safe_z + 50.0f + static_cast<float>(rand()) / (RAND_MAX / 150.0f);
 	Vector3 cam_pos;
 	cam_pos.x = x;
 	cam_pos.y = y;
