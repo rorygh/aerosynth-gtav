@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.13)
-project(aerosynth_gtav)
+project(aerosynth_gtav LANGUAGES C CXX)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
