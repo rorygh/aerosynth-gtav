@@ -54,6 +54,7 @@ captures/
   YYYY-MM-DD_HH-MM-SS/
     frame_000000.bmp
     frame_000000_depth.bmp
+    frame_000000_seg.bmp
     frame_000000.json
     ...
 ```
@@ -115,7 +116,7 @@ Pipeline:
 
 Output: 24-bit grayscale BMP (R=G=B), linear view-space Z, 0–500 m.
 
-### Phase 3 — Segmentation Masks
+### Phase 3 — Segmentation Masks ✅
 Primary targets: foliage/trees (stencil 3) and natural ground (stencil 4).
 
 **Stencil buffer class mapping** — empirically determined from GTA V captures.
