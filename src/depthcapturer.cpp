@@ -22,7 +22,8 @@ static bool                           g_copyDone     = false;
 // ---- Static member definitions ----
 const float DepthCapturer::MAX_DEPTH = 500.0f;
 
-std::vector<float> DepthCapturer::s_rawDepths;
+std::vector<float>   DepthCapturer::s_rawDepths;
+std::vector<uint8_t> DepthCapturer::s_rawStencil;
 int                DepthCapturer::s_capWidth  = 0;
 int                DepthCapturer::s_capHeight = 0;
 std::mutex         DepthCapturer::s_mutex;
@@ -210,14 +211,15 @@ void DepthCapturer::OnPresent(void* swapChain) {
             s_capWidth  = static_cast<int>(desc.Width);
             s_capHeight = static_cast<int>(desc.Height);
             s_rawDepths.resize(s_capWidth * s_capHeight);
+            s_rawStencil.resize(s_capWidth * s_capHeight);
 
             // Layout: 8 bytes/pixel — [float32 depth][uint8 stencil][3 bytes pad]
             for (int y = 0; y < s_capHeight; ++y) {
                 for (int x = 0; x < s_capWidth; ++x) {
-                    const float* px = reinterpret_cast<const float*>(
-                        static_cast<const char*>(mapped.pData) +
-                        mapped.RowPitch * y + x * 8);
-                    s_rawDepths[y * s_capWidth + x] = *px;
+                    const auto* p = static_cast<const uint8_t*>(mapped.pData) +
+                                    mapped.RowPitch * y + x * 8;
+                    s_rawDepths[y * s_capWidth + x]  = *reinterpret_cast<const float*>(p);
+                    s_rawStencil[y * s_capWidth + x] = p[4];
                 }
             }
         }
@@ -325,6 +327,99 @@ bool DepthCapturer::WriteBMPGray(const std::string& path,
             row[u * 3 + 0] = val;  // B
             row[u * 3 + 1] = val;  // G
             row[u * 3 + 2] = val;  // R
+        }
+        fwrite(row.data(), 1, stride, f);
+    }
+
+    fclose(f);
+    return true;
+}
+
+bool DepthCapturer::SaveSegmentation(const std::string& path) {
+    std::vector<uint8_t> stencil;
+    int w, h;
+    {
+        std::lock_guard<std::mutex> lock(s_mutex);
+        stencil = s_rawStencil;
+        w = s_capWidth;
+        h = s_capHeight;
+    }
+    if (stencil.empty()) return false;
+    return WriteSegBMP(path, stencil, w, h);
+}
+
+bool DepthCapturer::WriteSegBMP(const std::string& path,
+                                 const std::vector<uint8_t>& stencil,
+                                 int width, int height)
+{
+    // False-colour palette (BGR byte order).
+    // Stencil→class mapping empirically determined from GTA V captures:
+    //   0 = inanimate / artificial surfaces (roads, buildings, props)
+    //   1 = persons / pedestrians
+    //   2 = vehicles
+    //   3 = foliage / trees
+    //   4 = natural ground (terrain surface, grass)
+    //   7 = sky
+    //   5, 6, 8–15 = unassigned (not yet observed)
+    static const uint8_t kPal[][3] = {
+        { 64,  64,  64},  // 0  dark grey  — inanimate / artificial
+        {  0,   0, 255},  // 1  red        — persons
+        {255,   0,   0},  // 2  blue       — vehicles
+        {  0, 204,   0},  // 3  green      — foliage / trees
+        { 19,  69, 139},  // 4  brown      — natural ground
+        {  0, 255, 255},  // 5  yellow     — unassigned
+        {255, 255,   0},  // 6  cyan       — unassigned
+        {235, 206, 135},  // 7  sky blue   — sky
+        {  0, 165, 255},  // 8  orange     — unassigned
+        {128,   0, 128},  // 9  purple     — unassigned
+        {  0, 255,   0},  // 10 lt green   — unassigned
+        {255, 255, 255},  // 11 white      — unassigned
+        { 42,  42, 165},  // 12 sienna     — unassigned
+        {128, 128,   0},  // 13 teal       — unassigned
+        {203, 192, 255},  // 14 pink       — unassigned
+        {  0, 128, 128},  // 15 olive      — unassigned
+    };
+    static constexpr int kPalSize = 16;
+
+    // Log stencil value distribution to help identify class mappings.
+    int counts[256] = {};
+    for (uint8_t s : stencil) counts[s]++;
+    Log("WriteSegBMP: stencil distribution (value: pixels %%)");
+    for (int i = 0; i < 256; ++i) {
+        if (counts[i] > 0)
+            Log("  [%3d] %d px  (%.1f%%)", i, counts[i],
+                counts[i] * 100.0f / (width * height));
+    }
+
+    const int stride = ((width * 3 + 3) / 4) * 4;
+
+    BITMAPFILEHEADER fh = {};
+    fh.bfType    = 0x4D42;
+    fh.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+    fh.bfSize    = fh.bfOffBits + stride * height;
+
+    BITMAPINFOHEADER ih = {};
+    ih.biSize        = sizeof(BITMAPINFOHEADER);
+    ih.biWidth       = width;
+    ih.biHeight      = -height;
+    ih.biPlanes      = 1;
+    ih.biBitCount    = 24;
+    ih.biCompression = BI_RGB;
+    ih.biSizeImage   = stride * height;
+
+    FILE* f = nullptr;
+    if (fopen_s(&f, path.c_str(), "wb") != 0 || !f) return false;
+
+    fwrite(&fh, sizeof(fh), 1, f);
+    fwrite(&ih, sizeof(ih), 1, f);
+
+    std::vector<uint8_t> row(stride, 0);
+    for (int v = 0; v < height; ++v) {
+        for (int u = 0; u < width; ++u) {
+            const uint8_t* col = kPal[stencil[v * width + u] % kPalSize];
+            row[u * 3 + 0] = col[0];
+            row[u * 3 + 1] = col[1];
+            row[u * 3 + 2] = col[2];
         }
         fwrite(row.data(), 1, stride, f);
     }

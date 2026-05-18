@@ -197,7 +197,13 @@ void CaptureFrame(int frame_number)
 	char depth_path[256];
 	sprintf_s(depth_path, sizeof(depth_path),
 		"%s/frame_%06d_depth.bmp", g_session_directory.c_str(), frame_number);
-	g_depth_capturer.SaveDepth(depth_path, intrinsics.near_clip, intrinsics.far_clip);
+	bool depth_ok = g_depth_capturer.SaveDepth(depth_path, intrinsics.near_clip, intrinsics.far_clip);
+
+	char seg_path[256];
+	sprintf_s(seg_path, sizeof(seg_path),
+		"%s/frame_%06d_seg.bmp", g_session_directory.c_str(), frame_number);
+	if (depth_ok)
+		g_depth_capturer.SaveSegmentation(seg_path);
 
 	FrameData frame_data;
 	frame_data.frame_number      = frame_number;
@@ -207,11 +213,14 @@ void CaptureFrame(int frame_number)
 	frame_data.extrinsics        = g_camera.GetExtrinsics();
 	frame_data.intrinsics        = intrinsics;
 
-	char rgb_filename[64], depth_filename[64];
+	char rgb_filename[64], depth_filename[64], seg_filename[64];
 	sprintf_s(rgb_filename,   sizeof(rgb_filename),   "frame_%06d.bmp",       frame_number);
 	sprintf_s(depth_filename, sizeof(depth_filename), "frame_%06d_depth.bmp", frame_number);
+	sprintf_s(seg_filename,   sizeof(seg_filename),   "frame_%06d_seg.bmp",   frame_number);
 	frame_data.rgb_filename   = rgb_filename;
 	frame_data.depth_filename = depth_filename;
+	if (depth_ok)
+		frame_data.segmentation_filename = seg_filename;
 
 	g_file_exporter.ExportFrame(frame_data, rgb_path);
 }

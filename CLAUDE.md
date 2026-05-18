@@ -116,8 +116,22 @@ Pipeline:
 Output: 24-bit grayscale BMP (R=G=B), linear view-space Z, 0–500 m.
 
 ### Phase 3 — Segmentation Masks
-- Entity detection for natural features (trees, buildings, road, water)
-- Per-pixel class label mask
+Primary targets: foliage/trees (stencil 3) and natural ground (stencil 4).
+
+**Stencil buffer class mapping** — empirically determined from GTA V captures.
+The 8-bit stencil channel of the `DXGI_FORMAT_R32G8X24_TYPELESS` depth buffer encodes semantic classes:
+
+| Stencil | Class | Palette colour |
+|---------|-------|---------------|
+| 0 | Inanimate objects + artificial surfaces (roads, buildings, props) | Dark grey |
+| 1 | Persons / pedestrians | Red |
+| 2 | Vehicles | Blue |
+| 3 | Foliage / trees | Green |
+| 4 | Natural ground (terrain surface, grass) | Brown |
+| 7 | Sky | Sky blue |
+| 5, 6, 8–15 | Unassigned (not yet observed) | Various |
+
+The stencil is captured for free alongside the depth buffer (same `R32G8X24` staging texture, byte offset +4 per pixel). `DepthCapturer::SaveSegmentation` writes a false-colour 24-bit BMP using this palette and logs the per-value pixel distribution to `aerosynth_depth.log`.
 
 ### Phase 4 — Polish
 - Performance profiling

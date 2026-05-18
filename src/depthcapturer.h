@@ -14,10 +14,13 @@ public:
     // Must be called from DllMain DLL_PROCESS_DETACH
     static void UnregisterCallback();
 
-    // Request one depth frame and write it as a 16-bit BMP.
-    // Blocks (via WAIT) until the render thread delivers the data, or times out.
+    // Request one depth+stencil frame. Blocks (via WAIT) until the render thread delivers.
     // Returns false if capture failed or timed out.
     bool SaveDepth(const std::string& path, float near_clip, float far_clip);
+
+    // Write a false-colour segmentation BMP from the stencil captured by the last SaveDepth call.
+    // Must be called after a successful SaveDepth; does not block.
+    bool SaveSegmentation(const std::string& path);
 
     // Diagnostic state readable from the script thread for HUD display
     static bool         s_hooked;
@@ -38,7 +41,12 @@ private:
                       const std::vector<float>& linear_depths,
                       int width, int height);
 
-    static std::vector<float> s_rawDepths;
+    bool WriteSegBMP(const std::string& path,
+                     const std::vector<uint8_t>& stencil,
+                     int width, int height);
+
+    static std::vector<float>   s_rawDepths;
+    static std::vector<uint8_t> s_rawStencil;
     static int                s_capWidth;
     static int                s_capHeight;
     static std::mutex         s_mutex;
