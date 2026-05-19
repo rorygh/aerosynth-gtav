@@ -119,13 +119,20 @@ def convert_session(session_dir, out_dir):
         np.save(frame_out / "left_depth.npy", depth_m)
         Image.fromarray(depth_to_vis(depth_m)).save(frame_out / "left_depth.png")
 
+        K = fov_to_K(cam["intrinsics"]["fov"], W, H)
+        baseline_m = 1.0
+        fx = K[0][0]
+        with np.errstate(divide="ignore", invalid="ignore"):
+            disp = np.where(depth_m > 0, fx * baseline_m / depth_m, 0.0).astype(np.float32)
+        np.save(frame_out / "left_disp.npy", disp)
+
         seg = decode_seg_bmp(session_dir / files["segmentation"])
         np.save(frame_out / "left_seg_cat.npy", seg)
         Image.open(session_dir / files["segmentation"]).save(frame_out / "left_seg_cat.png")
 
         calib = {
-            "K": fov_to_K(cam["intrinsics"]["fov"], W, H),
-            "baseline_m": 1.0,
+            "K": K,
+            "baseline_m": baseline_m,
             "near_clip": cam["intrinsics"]["near_clip"],
             "far_clip":  cam["intrinsics"]["far_clip"],
             "left":  {"position": cam["position"],  "rotation": cam["rotation"]},
