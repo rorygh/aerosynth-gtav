@@ -93,21 +93,14 @@ void RandomizeDronePosition()
 	STREAMING::LOAD_SCENE(x, y, 0.0f);
 	WAIT(2500);
 
-	// Query ground height from 300 m — safely above all terrain in the LS area.
+	// Query ground Z from 807 m (summit of Mount Chiliad)
 	// Avoid querying from 1000 m: when collision hasn't loaded the function can
 	// misreport the query altitude itself as the ground, giving a bogus ~1000 m result.
 	float ground_z = 0.0f;
 	bool found_ground = false;
 	for (int i = 0; i < 20 && !found_ground; i++) {
-		found_ground = GAMEPLAY::GET_GROUND_Z_FOR_3D_COORD(x, y, 300.0f, &ground_z, FALSE);
+		found_ground = GAMEPLAY::GET_GROUND_Z_FOR_3D_COORD(x, y, 807.0f, &ground_z, FALSE);
 		if (!found_ground) WAIT(100);
-	}
-
-	// Sanity-check: terrain in our X/Y range tops out well below 250 m.
-	// A higher value means the query returned the probe altitude, not real terrain.
-	if (ground_z > 250.0f) {
-		found_ground = false;
-		ground_z = 0.0f;
 	}
 
 	// If the point is over water, use the water surface as the floor
