@@ -11,7 +11,7 @@ mkdir -p "$DEST_DIR"
 
 echo "Downloading GTA V output..."
 wget -q --show-progress \
-    "https://drive.google.com/uc?export=download&id=${FILE_ID}&confirm=t" \
+    "https://drive.usercontent.google.com/download?id=${FILE_ID}&export=download&confirm=t" \
     -O "$TMP_ZIP"
 
 echo "Extracting to $DEST_DIR..."
