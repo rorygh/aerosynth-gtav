@@ -28,6 +28,10 @@ public:
     // Respects bounds to avoid spawning in voids
     void RandomizeLocation();
     
+    // Return the world-space position of the right stereo camera, offset by baseline_m metres
+    // along the camera's horizontal right axis (perpendicular to heading, z=0 shift).
+    Vector3 GetStereoRightPosition(float baseline_m) const;
+
     // Toggle between scripted camera and default game camera
     void SetRendering(bool enabled);
     bool IsRendering() const;

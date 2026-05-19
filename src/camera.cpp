@@ -156,3 +156,14 @@ void ScriptedCamera::RandomizeLocation() {
 bool ScriptedCamera::IsActive() const {
     return is_active;
 }
+
+Vector3 ScriptedCamera::GetStereoRightPosition(float baseline_m) const {
+    Vector3 pos = GetPosition();
+    Vector3 rot = GetRotation();
+    // ZXY Euler, roll=0: camera local-X in world space = (cos rotZ, sin rotZ, 0).
+    // Baseline stays horizontal — no z component.
+    float rad = rot.z * (3.14159265358979f / 180.0f);
+    pos.x += baseline_m * cosf(rad);
+    pos.y += baseline_m * sinf(rad);
+    return pos;
+}

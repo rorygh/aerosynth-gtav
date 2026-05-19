@@ -222,6 +222,26 @@ void CaptureFrame(int frame_number)
 	if (depth_ok)
 		frame_data.segmentation_filename = seg_filename;
 
+	// Right stereo capture — shift camera 5 m along its horizontal right axis,
+	// grab RGB, then restore. No depth/seg needed for the right eye.
+	static const float kStereoBaseline = 5.0f;
+	Vector3 left_pos  = g_camera.GetPosition();
+	Vector3 right_pos = g_camera.GetStereoRightPosition(kStereoBaseline);
+	g_camera.SetPosition(right_pos);
+	WAIT(0);  // one render frame for GTA V to update the camera
+
+	char right_rgb_path[256], right_rgb_filename[64];
+	sprintf_s(right_rgb_path,     sizeof(right_rgb_path),     "%s/frame_%06d_right.bmp", g_session_directory.c_str(), frame_number);
+	sprintf_s(right_rgb_filename, sizeof(right_rgb_filename), "frame_%06d_right.bmp",    frame_number);
+
+	if (g_screen_capturer.CaptureScreenToPNG(right_rgb_path)) {
+		frame_data.right_rgb_filename       = right_rgb_filename;
+		frame_data.right_extrinsics.position = right_pos;
+		frame_data.right_extrinsics.rotation = g_camera.GetRotation();
+	}
+
+	g_camera.SetPosition(left_pos);
+
 	g_file_exporter.ExportFrame(frame_data, rgb_path);
 }
 

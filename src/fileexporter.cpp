@@ -97,6 +97,21 @@ bool FileExporter::WriteFrameMetadata(const FrameData& frame_data, const std::st
     file << "      \"aspect_ratio\": " << frame_data.intrinsics.aspect_ratio << "\n";
     file << "    }\n";
     file << "  },\n";
+
+    if (!frame_data.right_rgb_filename.empty()) {
+        file << "  \"camera_right\": {\n";
+        file << "    \"position\": {\n";
+        file << "      \"x\": " << frame_data.right_extrinsics.position.x << ",\n";
+        file << "      \"y\": " << frame_data.right_extrinsics.position.y << ",\n";
+        file << "      \"z\": " << frame_data.right_extrinsics.position.z << "\n";
+        file << "    },\n";
+        file << "    \"rotation\": {\n";
+        file << "      \"x\": " << frame_data.right_extrinsics.rotation.x << ",\n";
+        file << "      \"y\": " << frame_data.right_extrinsics.rotation.y << ",\n";
+        file << "      \"z\": " << frame_data.right_extrinsics.rotation.z << "\n";
+        file << "    }\n";
+        file << "  },\n";
+    }
     
     file << "  \"files\": {\n";
     file << "    \"rgb\": \"" << frame_data.rgb_filename << "\"";
@@ -105,6 +120,9 @@ bool FileExporter::WriteFrameMetadata(const FrameData& frame_data, const std::st
     }
     if (!frame_data.segmentation_filename.empty()) {
         file << ",\n    \"segmentation\": \"" << frame_data.segmentation_filename << "\"";
+    }
+    if (!frame_data.right_rgb_filename.empty()) {
+        file << ",\n    \"right\": \"" << frame_data.right_rgb_filename << "\"";
     }
     file << "\n";
     file << "  }\n";

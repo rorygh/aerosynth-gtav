@@ -52,10 +52,11 @@ The Ninja generator enables `compile_commands.json` for clangd IntelliSense.
 ```
 captures/
   YYYY-MM-DD_HH-MM-SS/
-    frame_000000.bmp
-    frame_000000_depth.bmp
-    frame_000000_seg.bmp
-    frame_000000.json
+    frame_000000.bmp           # left RGB
+    frame_000000_right.bmp     # right RGB (stereo, 5 m baseline)
+    frame_000000_depth.bmp     # left depth only
+    frame_000000_seg.bmp       # left segmentation only
+    frame_000000.json          # metadata for all of the above
     ...
 ```
 
@@ -136,5 +137,17 @@ The stencil is captured for free alongside the depth buffer (same `R32G8X24` sta
 
 ### Phase 4 — Polish
 - Performance profiling
-- Stereo image capture
+- ~~Stereo image capture~~ ✅ (see below)
 - PNG migration
+
+### Stereo Capture ✅
+Baseline: **5 m**, horizontal, along the camera's local right axis.
+
+Right-camera position offset from left: `right = left_pos + baseline × (cos rotZ, sin rotZ, 0)` — the camera's local X axis in world space for ZXY Euler with roll=0. The baseline lies flat in the world plane regardless of camera pitch.
+
+Sequence per frame:
+1. Left RGB + depth + seg (existing)
+2. `SetPosition(right_pos)` → `WAIT(0)` → GDI-grab right RGB
+3. `SetPosition(left_pos)` restore (no extra WAIT)
+
+Only RGB is captured for the right eye. Both camera positions are written to the JSON under `camera` (left) and `camera_right` (right). Intrinsics are shared.

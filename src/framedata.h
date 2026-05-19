@@ -33,7 +33,11 @@ struct FrameData {
     CameraExtrinsics extrinsics;
     
     // File paths (relative to capture session directory)
-    std::string rgb_filename;       // e.g., "frame_000000.png"
-    std::string depth_filename;     // e.g., "frame_000000_depth.png" (optional)
-    std::string segmentation_filename;  // e.g., "frame_000000_segmentation.png" (optional)
+    std::string rgb_filename;
+    std::string depth_filename;         // optional
+    std::string segmentation_filename;  // optional
+
+    // Right stereo camera — same intrinsics, position shifted along horizontal right axis
+    std::string right_rgb_filename;     // optional; empty if stereo not captured
+    CameraExtrinsics right_extrinsics;
 };
