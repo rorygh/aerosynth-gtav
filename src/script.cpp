@@ -328,7 +328,7 @@ void main()
 					RandomizeDronePosition();
 
 					// 10-second settle: maintain state and camera tracking each frame
-					for (int i = 0; i < 200 && g_continuous_capture; i++) {
+					for (int i = 0; i < 120 && g_continuous_capture; i++) {
 						if (g_camera.IsRendering()) {
 							Vector3 pp = ENTITY::GET_ENTITY_COORDS(PLAYER::PLAYER_PED_ID(), TRUE);
 							Vector3 cp; cp.x = pp.x; cp.y = pp.y; cp.z = pp.z + g_cam_altitude_offset;

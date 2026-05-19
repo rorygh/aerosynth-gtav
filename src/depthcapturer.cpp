@@ -291,11 +291,10 @@ bool DepthCapturer::WriteBMPGray(const std::string& path,
                                const std::vector<float>& linear_depths,
                                int width, int height)
 {
-    // 24-bit BGR BMP: R=G=B = depth/MAX_DEPTH*255.
-    // 16-bit BI_RGB is interpreted as RGB565 by viewers (striped colors);
-    // 24-bit grayscale avoids that with no external deps. 8-bit precision (2 m/step at 500 m) is
-    // sufficient for aerial depth.
-    const int stride = ((width * 3 + 3) / 4) * 4;  // DWORD-aligned row
+    // 16-bit BI_RGB BMP: one uint16 per pixel (0 = 0 m, 65535 = MAX_DEPTH m).
+    // Viewers display as RGB555 colour (expected — visual appearance is irrelevant).
+    // Decode: depth_m = pixel_value / 65535.0 * MAX_DEPTH
+    const int stride = ((width * 2 + 3) / 4) * 4;  // DWORD-aligned 16-bit rows
 
     BITMAPFILEHEADER fh = {};
     fh.bfType    = 0x4D42;
@@ -305,9 +304,9 @@ bool DepthCapturer::WriteBMPGray(const std::string& path,
     BITMAPINFOHEADER ih = {};
     ih.biSize        = sizeof(BITMAPINFOHEADER);
     ih.biWidth       = width;
-    ih.biHeight      = -height;
+    ih.biHeight      = -height;  // top-down
     ih.biPlanes      = 1;
-    ih.biBitCount    = 24;
+    ih.biBitCount    = 16;
     ih.biCompression = BI_RGB;
     ih.biSizeImage   = stride * height;
 
@@ -323,10 +322,9 @@ bool DepthCapturer::WriteBMPGray(const std::string& path,
             float d = linear_depths[v * width + u];
             if (d < 0.0f)      d = 0.0f;
             if (d > MAX_DEPTH) d = MAX_DEPTH;
-            uint8_t val = static_cast<uint8_t>(d / MAX_DEPTH * 255.0f);
-            row[u * 3 + 0] = val;  // B
-            row[u * 3 + 1] = val;  // G
-            row[u * 3 + 2] = val;  // R
+            uint16_t val = static_cast<uint16_t>(d / MAX_DEPTH * 65535.0f);
+            row[u * 2 + 0] = static_cast<uint8_t>(val & 0xFF);   // low byte
+            row[u * 2 + 1] = static_cast<uint8_t>(val >> 8);     // high byte
         }
         fwrite(row.data(), 1, stride, f);
     }

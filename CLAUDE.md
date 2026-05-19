@@ -60,8 +60,8 @@ captures/
     ...
 ```
 
-Depth is a 24-bit grayscale BMP (R=G=B), linear view-space Z: `0 = 0 m`, `255 = 500 m`.
-Decode: `depth_metres = pixel_value / 255.0 * 500.0`. Anything beyond 500 m is clamped to 255.
+Depth is a 16-bit `BI_RGB` BMP, linear view-space Z: `0 = 0 m`, `65535 = 500 m`. Viewers display it as RGB555 colour — this is expected and harmless.
+Decode: `depth_metres = pixel_value / 65535.0 * 500.0`. Anything beyond 500 m is clamped to 65535.
 
 ## GTA V Technical Notes
 
