@@ -7,7 +7,7 @@
 
 class DepthCapturer {
 public:
-    static const float MAX_DEPTH;   // metres — depth range encoded into 8-bit PNG
+    static const float MAX_DEPTH;   // metres — for 16-bit BMP encoding
 
     // Must be called from DllMain DLL_PROCESS_ATTACH
     static void RegisterCallback();
@@ -18,7 +18,7 @@ public:
     // Returns false if capture failed or timed out.
     bool SaveDepth(const std::string& path, float near_clip, float far_clip);
 
-    // Write a false-colour segmentation PNG from the stencil captured by the last SaveDepth call.
+    // Write a false-colour segmentation BMP from the stencil captured by the last SaveDepth call.
     // Must be called after a successful SaveDepth; does not block.
     bool SaveSegmentation(const std::string& path);
 
@@ -37,11 +37,11 @@ public:
 private:
     static void OnPresent(void* swapChain);
 
-    bool WritePNGGray(const std::string& path,
+    bool WriteBMPGray(const std::string& path,
                       const std::vector<float>& linear_depths,
                       int width, int height);
 
-    bool WriteSegPNG(const std::string& path,
+    bool WriteSegBMP(const std::string& path,
                      const std::vector<uint8_t>& stencil,
                      int width, int height);
 

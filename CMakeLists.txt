@@ -11,7 +11,6 @@ add_library(aerosynth_gtav SHARED
     src/camera.cpp
     src/fileexporter.cpp
     src/depthcapturer.cpp
-    external/lodepng/lodepng.cpp
 )
 
 target_include_directories(aerosynth_gtav PRIVATE 
