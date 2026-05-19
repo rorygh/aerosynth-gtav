@@ -52,6 +52,7 @@ void SetupPlayer()
 	TIME::SET_CLOCK_TIME(12, 0, 0);
 	TIME::PAUSE_CLOCK(TRUE);
 	GAMEPLAY::SET_WEATHER_TYPE_NOW_PERSIST(const_cast<char*>("EXTRASUNNY"));
+	GAMEPLAY::SET_WIND_SPEED(0.0f);
 	VEHICLE::SET_RANDOM_TRAINS(FALSE);
 	VEHICLE::SET_RANDOM_BOATS(FALSE);
 }
@@ -71,8 +72,9 @@ void MaintainPlayerState()
 	VEHICLE::SET_RANDOM_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME(0.0f);
 	VEHICLE::SET_PARKED_VEHICLE_DENSITY_MULTIPLIER_THIS_FRAME(0.0f);
 
-	// Re-apply weather each tick to suppress any engine-driven transitions.
+	// Re-apply weather and wind each tick to suppress engine-driven transitions.
 	GAMEPLAY::SET_WEATHER_TYPE_NOW_PERSIST(const_cast<char*>("EXTRASUNNY"));
+	GAMEPLAY::SET_WIND_SPEED(0.0f);
 }
 
 // Picks a random map position, teleports the player to the ground there,
@@ -114,6 +116,10 @@ void RandomizeDronePosition()
 
 	// Read actual post-teleport player position (may differ slightly from requested x/y)
 	Vector3 player_pos = ENTITY::GET_ENTITY_COORDS(player_ped, TRUE);
+
+	// Remove any peds/vehicles that spawned before density was zeroed in this area.
+	GAMEPLAY::CLEAR_AREA_OF_PEDS(player_pos.x, player_pos.y, player_pos.z, 600.0f, FALSE);
+	GAMEPLAY::CLEAR_AREA_OF_VEHICLES(player_pos.x, player_pos.y, player_pos.z, 600.0f, FALSE, FALSE, FALSE, FALSE, FALSE);
 
 	g_cam_altitude_offset = 20.0f + static_cast<float>(rand() % 31); // 20–50 m above player
 

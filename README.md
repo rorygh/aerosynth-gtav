@@ -17,7 +17,7 @@ Synthetic data pipeline source for GTA V
 
 ## Building
 
-The project assumes you're building on Windows with an MVSC toolchain.
+The project assumes you're building on Windows with an MVSC toolchain.  Initialize submodules before building (`git submodule update --init`).
 
 ### Using MsBuild:
 
