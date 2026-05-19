@@ -34,8 +34,6 @@ DepthCapturer  g_depth_capturer;
 // State variables
 bool g_capture_enabled = false;
 bool g_continuous_capture = false;
-unsigned int g_last_capture_time = 0;
-unsigned int g_capture_interval_ms = 50; // ~20 fps for continuous capture
 std::string g_session_directory = "";
 int frame_count = 0;
 float g_cam_altitude_offset = 35.0f; // metres above player; randomised by F8
@@ -271,17 +269,6 @@ void ProcessHotkeys()
 		}
 	}
 
-	// F7 - Toggle continuous capture
-	if (IsKeyJustUp(0x76)) { // 0x76 = F7
-		if (!g_capture_enabled) {
-			g_capture_enabled = true;
-			g_session_directory = g_file_exporter.InitializeSession();
-		}
-
-		g_continuous_capture = !g_continuous_capture;
-		g_last_capture_time = GetTickCount();
-	}
-
 	// F8 - Teleport to a random drone-like position
 	if (IsKeyJustUp(0x77)) { // 0x77 = F8
 		RandomizeDronePosition();
@@ -320,17 +307,43 @@ void main()
 		// Process hotkeys
 		ProcessHotkeys();
 
-		// Continuous capture: capture every N milliseconds
-		if (g_continuous_capture && !g_session_directory.empty()) {
-			unsigned int current_time = GetTickCount();
-			if (current_time - g_last_capture_time >= g_capture_interval_ms) {
-				CaptureFrame(frame_count++);
-				g_last_capture_time = current_time;
+		// F7 - enter continuous capture loop
+		if (IsKeyJustUp(0x76)) {
+			if (!g_capture_enabled) {
+				g_capture_enabled = true;
+				g_session_directory = g_file_exporter.InitializeSession();
+			}
+			if (!g_session_directory.empty()) {
+				g_continuous_capture = true;
+				UI::DISPLAY_HUD(FALSE);
+				UI::DISPLAY_RADAR(FALSE);
+
+				while (g_continuous_capture) {
+					RandomizeDronePosition();
+
+					// 10-second settle: maintain state and camera tracking each frame
+					for (int i = 0; i < 200 && g_continuous_capture; i++) {
+						if (g_camera.IsRendering()) {
+							Vector3 pp = ENTITY::GET_ENTITY_COORDS(PLAYER::PLAYER_PED_ID(), TRUE);
+							Vector3 cp; cp.x = pp.x; cp.y = pp.y; cp.z = pp.z + g_cam_altitude_offset;
+							g_camera.SetPosition(cp);
+						}
+						MaintainPlayerState();
+						if (IsKeyJustUp(0x76)) g_continuous_capture = false;
+						WAIT(50);
+					}
+
+					if (g_continuous_capture) {
+						CaptureFrame(frame_count++);
+					}
+				}
+
+				UI::DISPLAY_HUD(TRUE);
+				UI::DISPLAY_RADAR(TRUE);
 			}
 		}
 
 		// Keep aerial camera directly above the player (X/Y only; Z and rotation are fixed).
-		// This lets you move the player and have the camera follow.
 		if (g_camera.IsRendering()) {
 			Vector3 player_pos = ENTITY::GET_ENTITY_COORDS(PLAYER::PLAYER_PED_ID(), TRUE);
 			Vector3 cam_pos;
