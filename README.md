@@ -12,7 +12,7 @@ The project includes a vendored copy of ScriptHookV SDK 1.0.617.1a.
 
 ## Building
 
-The project assumes you're building on Windows with an MVSC toolchain.  Initialize submodules before building (`git submodule update --init`).
+The project assumes you're building on Windows with an MVSC toolchain.
 
 ### Using MsBuild:
 
