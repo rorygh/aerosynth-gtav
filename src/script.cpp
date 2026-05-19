@@ -38,6 +38,7 @@ unsigned int g_last_capture_time = 0;
 unsigned int g_capture_interval_ms = 50; // ~20 fps for continuous capture
 std::string g_session_directory = "";
 int frame_count = 0;
+float g_cam_altitude_offset = 35.0f; // metres above player; randomised by F8
 
 void SetupPlayer()
 {
@@ -80,8 +81,11 @@ void MaintainPlayerState()
 // then positions the camera directly above with a random altitude and angle.
 void RandomizeDronePosition()
 {
-	float x = -300.0f + static_cast<float>(rand()) / (RAND_MAX / 700.0f);
-	float y = -2000.0f + static_cast<float>(rand()) / (RAND_MAX / 3500.0f);
+	float x, y;
+	do {
+		x = -300.0f + static_cast<float>(rand()) / (RAND_MAX / 700.0f);
+		y = -2000.0f + static_cast<float>(rand()) / (RAND_MAX / 3500.0f);
+	} while (y < 1200.0f); // exclude urban areas
 
 	// Load collision and scene data for the new area
 	STREAMING::REQUEST_COLLISION_AT_COORD(x, y, 0.0f);
@@ -117,12 +121,16 @@ void RandomizeDronePosition()
 	ENTITY::SET_ENTITY_COORDS_NO_OFFSET(player_ped, x, y, safe_z, FALSE, FALSE, FALSE);
 	WAIT(500);
 
-	// Place camera directly above the player at a random altitude and angle
-	float cam_z = safe_z + 50.0f + static_cast<float>(rand()) / (RAND_MAX / 150.0f);
+	// Read actual post-teleport player position (may differ slightly from requested x/y)
+	Vector3 player_pos = ENTITY::GET_ENTITY_COORDS(player_ped, TRUE);
+
+	g_cam_altitude_offset = 20.0f + static_cast<float>(rand() % 31); // 20–50 m above player
+
+	// Initial camera position; the main loop keeps it tracking the player each frame.
 	Vector3 cam_pos;
-	cam_pos.x = x;
-	cam_pos.y = y;
-	cam_pos.z = cam_z;
+	cam_pos.x = player_pos.x;
+	cam_pos.y = player_pos.y;
+	cam_pos.z = player_pos.z + g_cam_altitude_offset;
 
 	Vector3 cam_rot;
 	cam_rot.x = -20.0f - static_cast<float>(rand() % 71); // -20 to -90 pitch
@@ -156,6 +164,12 @@ void DrawDebugText()
 	UI::SET_TEXT_COLOUR(255, 255, 255, 255);
 	UI::_SET_TEXT_ENTRY("CELL_EMAIL_BCON");
 
+	Vector3 cam_pos = g_camera.IsRendering()
+		? g_camera.GetPosition()
+		: CAM::GET_GAMEPLAY_CAM_COORD();
+	Vector3 cam_rot = g_camera.IsRendering()
+		? g_camera.GetRotation()
+		: CAM::GET_GAMEPLAY_CAM_ROT(2);
 	char status_text[512];
 	sprintf_s(status_text, sizeof(status_text),
 		"AEROSYNTH Data Capture [%s]\n"
@@ -164,10 +178,14 @@ void DrawDebugText()
 		"F8 - Random Drone Position\n"
 		"F9 - Toggle Camera Mode\n"
 		"Session: %s\n"
+		"Pos: %.1f, %.1f, %.1f\n"
+		"Rot: p=%.1f r=%.1f y=%.1f\n"
 		"Depth: hook=%s omRT=%d match=%d clrDSV=%d fmt=%u %dx%d map=%s%s",
 		g_camera.IsRendering() ? "AERIAL" : "NORMAL",
 		g_continuous_capture ? "ON" : "OFF",
 		g_session_directory.empty() ? "Not Started" : "Active",
+		cam_pos.x, cam_pos.y, cam_pos.z,
+		cam_rot.x, cam_rot.y, cam_rot.z,
 		DepthCapturer::s_hooked        ? "Y" : "N",
 		DepthCapturer::s_omSetRTCount,
 		DepthCapturer::s_matchCount,
@@ -224,11 +242,12 @@ void CaptureFrame(int frame_number)
 
 	// Right stereo capture — shift camera 5 m along its horizontal right axis,
 	// grab RGB, then restore. No depth/seg needed for the right eye.
-	static const float kStereoBaseline = 5.0f;
+	static const float kStereoBaseline = 1.0f;
 	Vector3 left_pos  = g_camera.GetPosition();
 	Vector3 right_pos = g_camera.GetStereoRightPosition(kStereoBaseline);
 	g_camera.SetPosition(right_pos);
-	WAIT(0);  // one render frame for GTA V to update the camera
+	WAIT(0);  // GTA V renders right frame
+	WAIT(0);  // DWM presents it — BitBlt now reads the right frame
 
 	char right_rgb_path[256], right_rgb_filename[64];
 	sprintf_s(right_rgb_path,     sizeof(right_rgb_path),     "%s/frame_%06d_right.bmp", g_session_directory.c_str(), frame_number);
@@ -315,6 +334,17 @@ void main()
 				CaptureFrame(frame_count++);
 				g_last_capture_time = current_time;
 			}
+		}
+
+		// Keep aerial camera directly above the player (X/Y only; Z and rotation are fixed).
+		// This lets you move the player and have the camera follow.
+		if (g_camera.IsRendering()) {
+			Vector3 player_pos = ENTITY::GET_ENTITY_COORDS(PLAYER::PLAYER_PED_ID(), TRUE);
+			Vector3 cam_pos;
+			cam_pos.x = player_pos.x;
+			cam_pos.y = player_pos.y;
+			cam_pos.z = player_pos.z + g_cam_altitude_offset;
+			g_camera.SetPosition(cam_pos);
 		}
 
 		// Re-apply invincibility and invisibility in case of respawn
