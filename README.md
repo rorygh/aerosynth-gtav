@@ -13,6 +13,18 @@ ScriptHookV ASI mod for GTA V that captures aerial stereo imagery with depth and
 
 The scripted camera is positioned 20–50 m above the player with a random pitch (−20° to −90°) and yaw. F8 also clears nearby peds and vehicles, pauses the clock at noon, and locks weather to clear.
 
+## Sample output
+
+Converted frame (`frame_000004`) from the full dataset:
+
+| Left RGB | Right RGB |
+|---|---|
+| ![left_rgb](docs/sample/left_rgb.png) | ![right_rgb](docs/sample/right_rgb.png) |
+
+| Depth (near=dark, far=bright) | Segmentation |
+|---|---|
+| ![left_depth](docs/sample/left_depth.png) | ![left_seg_cat](docs/sample/left_seg_cat.png) |
+
 ## Raw output format
 
 Each capture session writes to `captures/YYYY-MM-DD_HH-MM-SS/`:
