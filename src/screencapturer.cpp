@@ -1,4 +1,5 @@
 #include "screencapturer.h"
+#include "lodepng/lodepng.h"
 #include <vector>
 
 static const char* GTA_WINDOW_CLASS = "grcWindow";
@@ -72,30 +73,23 @@ bool ScreenCapturer::CaptureScreenToPNG(const std::string& output_path) {
 
     BITMAP bmp;
     GetObject(hBitmap, sizeof(BITMAP), &bmp);
+    int w = bmp.bmWidth;
+    int h = bmp.bmHeight;
 
-    int w           = bmp.bmWidth;
-    int h           = bmp.bmHeight;
-    int bit_count   = bmp.bmBitsPixel;
-    int row_size    = ((w * bit_count + 31) / 32) * 4;
-
+    // Request 32-bit top-down BGRA from GDI (negative biHeight = top-down).
     BITMAPINFOHEADER bmih = {};
     bmih.biSize        = sizeof(BITMAPINFOHEADER);
     bmih.biWidth       = w;
-    bmih.biHeight      = h;
+    bmih.biHeight      = -h;
     bmih.biPlanes      = 1;
-    bmih.biBitCount    = static_cast<WORD>(bit_count);
+    bmih.biBitCount    = 32;
     bmih.biCompression = BI_RGB;
-
-    BITMAPFILEHEADER bmfh = {};
-    bmfh.bfType    = 0x4D42;
-    bmfh.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
-    bmfh.bfSize    = bmfh.bfOffBits + row_size * h;
 
     HDC hScreenDC = GetDC(nullptr);
     HDC hMemDC    = CreateCompatibleDC(hScreenDC);
     SelectObject(hMemDC, hBitmap);
 
-    std::vector<BYTE> pixels(row_size * h);
+    std::vector<BYTE> pixels(w * h * 4);
     GetDIBits(hMemDC, hBitmap, 0, h, pixels.data(),
               reinterpret_cast<BITMAPINFO*>(&bmih), DIB_RGB_COLORS);
 
@@ -103,12 +97,13 @@ bool ScreenCapturer::CaptureScreenToPNG(const std::string& output_path) {
     ReleaseDC(nullptr, hScreenDC);
     DeleteObject(hBitmap);
 
-    FILE* f = nullptr;
-    if (fopen_s(&f, output_path.c_str(), "wb") != 0 || !f) return false;
-    fwrite(&bmfh, sizeof(bmfh), 1, f);
-    fwrite(&bmih, sizeof(bmih), 1, f);
-    fwrite(pixels.data(), 1, pixels.size(), f);
-    fclose(f);
+    // GDI gives BGRA with A=0; convert to RGBA with A=255 for lodepng.
+    for (int i = 0; i < w * h; ++i) {
+        BYTE b = pixels[i * 4 + 0];
+        pixels[i * 4 + 0] = pixels[i * 4 + 2];  // R
+        pixels[i * 4 + 2] = b;                   // B
+        pixels[i * 4 + 3] = 255;
+    }
 
-    return true;
+    return lodepng_encode32_file(output_path.c_str(), pixels.data(), w, h) == 0;
 }

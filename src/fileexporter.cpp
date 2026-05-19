@@ -58,7 +58,7 @@ std::string FileExporter::GetFrameFilename(int frame_number, const std::string& 
     if (!suffix.empty()) {
         oss << "_" << suffix;
     }
-    oss << ".bmp"; // TODO: Change to .png when lodepng is added
+    oss << ".png";
     return oss.str();
 }
 

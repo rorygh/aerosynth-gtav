@@ -4,11 +4,16 @@ Synthetic data pipeline source for GTA V
 
 ## Dependencies
 
+### Build
+
 * CMake (developed on 4.3.2)
 * MVSC (developed on MSVC 19.51.36243.0)
 * Ninja (optional - developed on 1.13.2)
 
-The project includes a vendored copy of ScriptHookV SDK 1.0.617.1a.
+### Compile-time
+
+* ScriptHookV SDK 1.0.617.1a (vendored)
+* LodePNG (vendored)
 
 ## Building
 

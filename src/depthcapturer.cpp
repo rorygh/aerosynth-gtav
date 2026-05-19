@@ -1,4 +1,5 @@
 #include "depthcapturer.h"
+#include "lodepng/lodepng.h"
 #include "scripthookv_sdk/inc/main.h"
 #include "scripthookv_sdk/inc/natives.h"
 #include <d3d11.h>
@@ -284,55 +285,21 @@ bool DepthCapturer::SaveDepth(const std::string& path, float near_clip, float fa
         linear[i] = Q * near_clip / (Q - ndc);
     }
 
-    return WriteBMPGray(path, linear, w, h);
+    return WritePNGGray(path, linear, w, h);
 }
 
-bool DepthCapturer::WriteBMPGray(const std::string& path,
-                               const std::vector<float>& linear_depths,
-                               int width, int height)
+bool DepthCapturer::WritePNGGray(const std::string& path,
+                                  const std::vector<float>& linear_depths,
+                                  int width, int height)
 {
-    // 24-bit BGR BMP: R=G=B = depth/MAX_DEPTH*255.
-    // 16-bit BI_RGB is interpreted as RGB565 by viewers (striped colors);
-    // 24-bit grayscale avoids that with no external deps. 8-bit precision (2 m/step at 500 m) is
-    // sufficient for aerial depth.
-    const int stride = ((width * 3 + 3) / 4) * 4;  // DWORD-aligned row
-
-    BITMAPFILEHEADER fh = {};
-    fh.bfType    = 0x4D42;
-    fh.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
-    fh.bfSize    = fh.bfOffBits + stride * height;
-
-    BITMAPINFOHEADER ih = {};
-    ih.biSize        = sizeof(BITMAPINFOHEADER);
-    ih.biWidth       = width;
-    ih.biHeight      = -height;
-    ih.biPlanes      = 1;
-    ih.biBitCount    = 24;
-    ih.biCompression = BI_RGB;
-    ih.biSizeImage   = stride * height;
-
-    FILE* f = nullptr;
-    if (fopen_s(&f, path.c_str(), "wb") != 0 || !f) return false;
-
-    fwrite(&fh, sizeof(fh), 1, f);
-    fwrite(&ih, sizeof(ih), 1, f);
-
-    std::vector<uint8_t> row(stride, 0);
-    for (int v = 0; v < height; ++v) {
-        for (int u = 0; u < width; ++u) {
-            float d = linear_depths[v * width + u];
-            if (d < 0.0f)      d = 0.0f;
-            if (d > MAX_DEPTH) d = MAX_DEPTH;
-            uint8_t val = static_cast<uint8_t>(d / MAX_DEPTH * 255.0f);
-            row[u * 3 + 0] = val;  // B
-            row[u * 3 + 1] = val;  // G
-            row[u * 3 + 2] = val;  // R
-        }
-        fwrite(row.data(), 1, stride, f);
+    std::vector<uint8_t> gray(width * height);
+    for (int i = 0; i < width * height; ++i) {
+        float d = linear_depths[i];
+        if (d < 0.0f)      d = 0.0f;
+        if (d > MAX_DEPTH) d = MAX_DEPTH;
+        gray[i] = static_cast<uint8_t>(d / MAX_DEPTH * 255.0f);
     }
-
-    fclose(f);
-    return true;
+    return lodepng_encode_file(path.c_str(), gray.data(), width, height, LCT_GREY, 8) == 0;
 }
 
 bool DepthCapturer::SaveSegmentation(const std::string& path) {
@@ -345,85 +312,50 @@ bool DepthCapturer::SaveSegmentation(const std::string& path) {
         h = s_capHeight;
     }
     if (stencil.empty()) return false;
-    return WriteSegBMP(path, stencil, w, h);
+    return WriteSegPNG(path, stencil, w, h);
 }
 
-bool DepthCapturer::WriteSegBMP(const std::string& path,
+bool DepthCapturer::WriteSegPNG(const std::string& path,
                                  const std::vector<uint8_t>& stencil,
                                  int width, int height)
 {
-    // False-colour palette (BGR byte order).
-    // Stencil→class mapping empirically determined from GTA V captures:
-    //   0 = inanimate / artificial surfaces (roads, buildings, props)
-    //   1 = persons / pedestrians
-    //   2 = vehicles
-    //   3 = foliage / trees
-    //   4 = natural ground (terrain surface, grass)
-    //   7 = sky
-    //   5, 6, 8–15 = unassigned (not yet observed)
+    // False-colour palette in RGB order.
     static const uint8_t kPal[][3] = {
         { 64,  64,  64},  // 0  dark grey  — inanimate / artificial
-        {  0,   0, 255},  // 1  red        — persons
-        {255,   0,   0},  // 2  blue       — vehicles
+        {255,   0,   0},  // 1  red        — persons
+        {  0,   0, 255},  // 2  blue       — vehicles
         {  0, 204,   0},  // 3  green      — foliage / trees
-        { 19,  69, 139},  // 4  brown      — natural ground
-        {  0, 255, 255},  // 5  yellow     — unassigned
-        {255, 255,   0},  // 6  cyan       — unassigned
-        {235, 206, 135},  // 7  sky blue   — sky
-        {  0, 165, 255},  // 8  orange     — unassigned
+        {139,  69,  19},  // 4  brown      — natural ground
+        {255, 255,   0},  // 5  yellow     — unassigned
+        {  0, 255, 255},  // 6  cyan       — unassigned
+        {135, 206, 235},  // 7  sky blue   — sky
+        {255, 165,   0},  // 8  orange     — unassigned
         {128,   0, 128},  // 9  purple     — unassigned
         {  0, 255,   0},  // 10 lt green   — unassigned
         {255, 255, 255},  // 11 white      — unassigned
-        { 42,  42, 165},  // 12 sienna     — unassigned
-        {128, 128,   0},  // 13 teal       — unassigned
-        {203, 192, 255},  // 14 pink       — unassigned
-        {  0, 128, 128},  // 15 olive      — unassigned
+        {165,  42,  42},  // 12 sienna     — unassigned
+        {  0, 128, 128},  // 13 teal       — unassigned
+        {255, 192, 203},  // 14 pink       — unassigned
+        {128, 128,   0},  // 15 olive      — unassigned
     };
     static constexpr int kPalSize = 16;
 
     // Log stencil value distribution to help identify class mappings.
     int counts[256] = {};
     for (uint8_t s : stencil) counts[s]++;
-    Log("WriteSegBMP: stencil distribution (value: pixels %%)");
+    Log("WriteSegPNG: stencil distribution (value: pixels %%)");
     for (int i = 0; i < 256; ++i) {
         if (counts[i] > 0)
             Log("  [%3d] %d px  (%.1f%%)", i, counts[i],
                 counts[i] * 100.0f / (width * height));
     }
 
-    const int stride = ((width * 3 + 3) / 4) * 4;
-
-    BITMAPFILEHEADER fh = {};
-    fh.bfType    = 0x4D42;
-    fh.bfOffBits = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
-    fh.bfSize    = fh.bfOffBits + stride * height;
-
-    BITMAPINFOHEADER ih = {};
-    ih.biSize        = sizeof(BITMAPINFOHEADER);
-    ih.biWidth       = width;
-    ih.biHeight      = -height;
-    ih.biPlanes      = 1;
-    ih.biBitCount    = 24;
-    ih.biCompression = BI_RGB;
-    ih.biSizeImage   = stride * height;
-
-    FILE* f = nullptr;
-    if (fopen_s(&f, path.c_str(), "wb") != 0 || !f) return false;
-
-    fwrite(&fh, sizeof(fh), 1, f);
-    fwrite(&ih, sizeof(ih), 1, f);
-
-    std::vector<uint8_t> row(stride, 0);
-    for (int v = 0; v < height; ++v) {
-        for (int u = 0; u < width; ++u) {
-            const uint8_t* col = kPal[stencil[v * width + u] % kPalSize];
-            row[u * 3 + 0] = col[0];
-            row[u * 3 + 1] = col[1];
-            row[u * 3 + 2] = col[2];
-        }
-        fwrite(row.data(), 1, stride, f);
+    std::vector<uint8_t> rgb(width * height * 3);
+    for (int i = 0; i < width * height; ++i) {
+        const uint8_t* col = kPal[stencil[i] % kPalSize];
+        rgb[i * 3 + 0] = col[0];
+        rgb[i * 3 + 1] = col[1];
+        rgb[i * 3 + 2] = col[2];
     }
-
-    fclose(f);
-    return true;
+    return lodepng_encode24_file(path.c_str(), rgb.data(), width, height) == 0;
 }
