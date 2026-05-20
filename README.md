@@ -61,13 +61,7 @@ The false-colour BMP encodes GTA V stencil buffer classes:
 
 ## Downloading the output
 
-A pre-captured dataset is available on Google Drive:
-
-```bash
-bash download-output.sh
-```
-
-Extracts to `output/` relative to the repo root.
+A pre-captured dataset is available on Google Drive. To use it instead of capturing from scratch, uncomment the block at the bottom of `setup-env.sh`.
 
 ## Converting to normalised format
 
@@ -165,7 +159,6 @@ src/
 external/
   scripthookv_sdk/    vendored ScriptHookV SDK (headers + .lib)
 convert.py            normalises raw capture sessions to per-frame PNG/npy layout
-download-output.sh    download pre-captured output from Google Drive
 setup-env.sh          creates the gtav conda environment for running convert.py
 output/               capture sessions and converted frames (gitignored)
 ```
