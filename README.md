@@ -72,7 +72,7 @@ conda activate gtav
 python convert.py output/<session_dir> --out-dir output/converted
 ```
 
-You can run the `setup-env.sh` script to set up a basic environment to run this script or you can just use one of the other related Python environments.
+Run `setup-env.sh` to create a minimal environment, or use any of the other component environments (`raft` or `unet`) which already include the required packages.
 
 ### Converted layout
 
@@ -84,7 +84,7 @@ output/converted/
     left_depth.npy        # float32 depth in metres
     left_depth.png        # depth visualisation (near=dark, far=bright)
     left_disp.npy         # float32 disparity in pixels (for RAFT-Stereo)
-    left_seg_cat.npy      # int32 unified class IDs (see below)
+    left_seg_cat.npy      # int32 stencil class IDs (see segmentation palette above)
     left_seg_cat.png      # false-colour segmentation (copied from source)
     calib.json            # K matrix, baseline, left/right extrinsics
   frame_000001/
@@ -160,5 +160,6 @@ external/
   scripthookv_sdk/    vendored ScriptHookV SDK (headers + .lib)
 convert.py            normalises raw capture sessions to per-frame PNG/npy layout
 setup-env.sh          creates the gtav conda environment for running convert.py
-output/               capture sessions and converted frames (gitignored)
+captures/             raw session output from the GTA V mod (gitignored)
+output/               converted frames ready for training (gitignored)
 ```
